@@ -6,6 +6,9 @@ Handles environment variables and application settings.
 import os
 from pydantic import BaseModel
 from typing import Optional
+from dotenv import load_dotenv
+# Load environment variables from .env file
+load_dotenv() 
 
 
 class Settings(BaseModel):
