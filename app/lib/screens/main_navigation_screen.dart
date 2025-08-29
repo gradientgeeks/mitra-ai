@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../screens/home_screen.dart';
 import '../screens/chat_screen.dart';
 import '../screens/talk_screen.dart';
 import '../screens/resources_screen.dart';
@@ -15,6 +16,7 @@ class MainNavigationScreen extends ConsumerWidget {
     final currentIndex = ref.watch(navigationIndexProvider);
 
     final screens = [
+      const HomeScreen(),
       const ChatScreen(),
       const TalkScreen(),
       const ResourcesScreen(),
@@ -46,28 +48,37 @@ class MainNavigationScreen extends ConsumerWidget {
                   context,
                   ref,
                   index: 0,
-                  icon: Icons.chat_bubble_outline,
-                  activeIcon: Icons.chat_bubble,
-                  label: 'Chat',
+                  icon: Icons.home_outlined,
+                  activeIcon: Icons.home,
+                  label: 'Home',
                   isActive: currentIndex == 0,
                 ),
                 _buildNavItem(
                   context,
                   ref,
                   index: 1,
-                  icon: Icons.mic_none,
-                  activeIcon: Icons.mic,
-                  label: 'Talk',
+                  icon: Icons.chat_bubble_outline,
+                  activeIcon: Icons.chat_bubble,
+                  label: 'Chat',
                   isActive: currentIndex == 1,
                 ),
                 _buildNavItem(
                   context,
                   ref,
                   index: 2,
+                  icon: Icons.mic_none,
+                  activeIcon: Icons.mic,
+                  label: 'Talk',
+                  isActive: currentIndex == 2,
+                ),
+                _buildNavItem(
+                  context,
+                  ref,
+                  index: 3,
                   icon: Icons.library_books_outlined,
                   activeIcon: Icons.library_books,
                   label: 'Resources',
-                  isActive: currentIndex == 2,
+                  isActive: currentIndex == 3,
                 ),
               ],
             ),
