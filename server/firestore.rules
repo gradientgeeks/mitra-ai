@@ -1,0 +1,57 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read and write their own data
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Chat sessions - users can only access their own sessions
+    match /chat_sessions/{sessionId} {
+      allow read, write: if request.auth != null 
+        && request.auth.uid == resource.data.user_id;
+      allow create: if request.auth != null 
+        && request.auth.uid == request.resource.data.user_id;
+    }
+    
+    // Mood entries - users can only access their own mood data
+    match /mood_entries/{entryId} {
+      allow read, write: if request.auth != null 
+        && request.auth.uid == resource.data.user_id;
+      allow create: if request.auth != null 
+        && request.auth.uid == request.resource.data.user_id;
+    }
+    
+    // Journal entries - users can only access their own journal data
+    match /journal_entries/{entryId} {
+      allow read, write: if request.auth != null 
+        && request.auth.uid == resource.data.user_id;
+      allow create: if request.auth != null 
+        && request.auth.uid == request.resource.data.user_id;
+    }
+    
+    // Meditation sessions - users can only access their own meditation data
+    match /meditation_sessions/{sessionId} {
+      allow read, write: if request.auth != null 
+        && request.auth.uid == resource.data.user_id;
+      allow create: if request.auth != null 
+        && request.auth.uid == request.resource.data.user_id;
+    }
+    
+    // Wellness data - users can only access their own wellness information
+    match /wellness_data/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // User preferences - users can only access their own preferences
+    match /user_preferences/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Block all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
