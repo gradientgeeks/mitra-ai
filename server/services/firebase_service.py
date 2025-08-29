@@ -6,10 +6,11 @@ import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import json
+import os
 
-# Note: Firebase Admin SDK would be used in production
-# For now, we'll create a mock implementation that follows the interface
-# In production, add: firebase-admin package and proper initialization
+# Firebase Admin SDK imports
+import firebase_admin
+from firebase_admin import credentials, auth, firestore, exceptions
 
 from core.config import settings
 from models.user import UserProfile, UserProvider, UserStatus, UserPreferences
@@ -22,23 +23,264 @@ class FirebaseService:
     
     def __init__(self):
         """Initialize Firebase services."""
-        # In production, initialize Firebase Admin SDK here
-        # import firebase_admin
-        # from firebase_admin import credentials, auth, firestore
-        # 
-        # if settings.firebase_credentials_path:
-        #     cred = credentials.Certificate(settings.firebase_credentials_path)
-        #     firebase_admin.initialize_app(cred, {
-        #         'projectId': settings.firebase_project_id,
-        #     })
-        # 
-        # self.auth = auth
-        # self.db = firestore.client()
-        
-        # Mock implementation for now
-        self.db = None
         self.auth = None
-        logger.warning("Using mock Firebase implementation. Configure Firebase Admin SDK for production.")
+        self.db = None
+        
+        try:
+            # Check if Firebase is already initialized
+            firebase_admin.get_app()
+            logger.info("Firebase already initialized")
+        except ValueError:
+            # Initialize Firebase Admin SDK
+            if settings.firebase_credentials_path and os.path.exists(settings.firebase_credentials_path):
+                # Use service account credentials file
+                cred = credentials.Certificate(settings.firebase_credentials_path)
+                firebase_admin.initialize_app(cred, {
+                    'projectId': settings.firebase_project_id,
+                })
+                logger.info(f"Firebase initialized with service account from {settings.firebase_credentials_path}")
+            elif settings.firebase_project_id:
+                # Use default credentials (for Cloud Run, GCE, etc.)
+                try:
+                    cred = credentials.ApplicationDefault()
+                    firebase_admin.initialize_app(cred, {
+                        'projectId': settings.firebase_project_id,
+                    })
+                    logger.info("Firebase initialized with application default credentials")
+                except Exception as e:
+                    logger.error(f"Failed to initialize Firebase with default credentials: {e}")
+                    raise
+            else:
+                logger.error("Firebase configuration missing. Set FIREBASE_CREDENTIALS_PATH or FIREBASE_PROJECT_ID")
+                raise ValueError("Firebase configuration missing")
+        
+        # Initialize Firebase services
+        self.auth = auth
+        self.db = firestore.client()
+        logger.info("Firebase services initialized successfully")
+
+    def _handle_firebase_error(self, error: Exception, operation: str) -> None:
+        """
+        Centralized Firebase error handling and logging.
+        
+        Args:
+            error: The exception that occurred
+            operation: Description of the operation that failed
+        """
+        if isinstance(error, exceptions.InvalidArgumentError):
+            logger.error(f"{operation} failed: Invalid arguments - {error}")
+        elif isinstance(error, exceptions.NotFoundError):
+            logger.error(f"{operation} failed: Resource not found - {error}")
+        elif isinstance(error, exceptions.AlreadyExistsError):
+            logger.error(f"{operation} failed: Resource already exists - {error}")
+        elif isinstance(error, exceptions.PermissionDeniedError):
+            logger.error(f"{operation} failed: Permission denied - {error}")
+        elif isinstance(error, exceptions.UnauthenticatedError):
+            logger.error(f"{operation} failed: Unauthenticated - {error}")
+        elif isinstance(error, exceptions.ResourceExhaustedError):
+            logger.error(f"{operation} failed: Resource exhausted/quota exceeded - {error}")
+        elif isinstance(error, exceptions.FailedPreconditionError):
+            logger.error(f"{operation} failed: Failed precondition - {error}")
+        elif isinstance(error, exceptions.AbortedError):
+            logger.error(f"{operation} failed: Operation aborted - {error}")
+        elif isinstance(error, exceptions.OutOfRangeError):
+            logger.error(f"{operation} failed: Out of range - {error}")
+        elif isinstance(error, exceptions.UnimplementedError):
+            logger.error(f"{operation} failed: Unimplemented - {error}")
+        elif isinstance(error, exceptions.InternalError):
+            logger.error(f"{operation} failed: Internal error - {error}")
+        elif isinstance(error, exceptions.UnavailableError):
+            logger.error(f"{operation} failed: Service unavailable - {error}")
+        elif isinstance(error, exceptions.DataLossError):
+            logger.error(f"{operation} failed: Data loss - {error}")
+        elif isinstance(error, exceptions.FirebaseError):
+            logger.error(f"{operation} failed: Firebase error - {error}")
+        else:
+            logger.error(f"{operation} failed: Unexpected error - {error}")
+
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Perform a health check on Firebase services.
+        
+        Returns:
+            Dictionary with service status information
+        """
+        health_status = {
+            "firebase_admin": False,
+            "auth": False,
+            "firestore": False,
+            "timestamp": datetime.utcnow().isoformat(),
+            "errors": []
+        }
+        
+        try:
+            # Check if Firebase Admin is initialized
+            firebase_admin.get_app()
+            health_status["firebase_admin"] = True
+        except Exception as e:
+            health_status["errors"].append(f"Firebase Admin: {str(e)}")
+        
+        try:
+            # Test Auth service
+            if self.auth:
+                # Try to get a non-existent user (this tests auth connectivity)
+                try:
+                    self.auth.get_user("health-check-non-existent-user")
+                except exceptions.UserNotFoundError:
+                    # This is expected and means auth is working
+                    health_status["auth"] = True
+                except Exception as e:
+                    health_status["errors"].append(f"Auth service: {str(e)}")
+            else:
+                health_status["errors"].append("Auth service not initialized")
+        except Exception as e:
+            health_status["errors"].append(f"Auth check: {str(e)}")
+        
+        try:
+            # Test Firestore service
+            if self.db:
+                # Try to read from a collection (minimal operation)
+                collection_ref = self.db.collection('health-check')
+                list(collection_ref.limit(1).stream())
+                health_status["firestore"] = True
+            else:
+                health_status["errors"].append("Firestore service not initialized")
+        except Exception as e:
+            health_status["errors"].append(f"Firestore service: {str(e)}")
+        
+        return health_status
+
+    async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """
+        Get user record by email from Firebase Auth.
+        
+        Args:
+            email: User email address
+            
+        Returns:
+            User record dictionary or None if not found
+        """
+        try:
+            user_record = self.auth.get_user_by_email(email)
+            return {
+                'uid': user_record.uid,
+                'email': user_record.email,
+                'display_name': user_record.display_name,
+                'phone_number': user_record.phone_number,
+                'photo_url': user_record.photo_url,
+                'disabled': user_record.disabled,
+                'email_verified': user_record.email_verified,
+                'provider_data': [
+                    {
+                        'uid': p.uid,
+                        'email': p.email,
+                        'display_name': p.display_name,
+                        'phone_number': p.phone_number,
+                        'photo_url': p.photo_url,
+                        'provider_id': p.provider_id
+                    } for p in user_record.provider_data
+                ],
+                'metadata': {
+                    'creation_timestamp': user_record.user_metadata.creation_timestamp,
+                    'last_sign_in_timestamp': user_record.user_metadata.last_sign_in_timestamp,
+                    'last_refresh_timestamp': user_record.user_metadata.last_refresh_timestamp,
+                }
+            }
+            
+        except exceptions.UserNotFoundError:
+            logger.info(f"User with email {email} not found in Firebase Auth")
+            return None
+        except exceptions.InvalidArgumentError as e:
+            logger.error(f"Invalid email format: {e}")
+            return None
+        except exceptions.FirebaseError as e:
+            self._handle_firebase_error(e, f"Getting user by email {email}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error getting user by email {email}: {e}")
+            return None
+
+    async def create_user(self, user_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Create a new user in Firebase Auth.
+        
+        Args:
+            user_data: User data (email, password, display_name, etc.)
+            
+        Returns:
+            User ID if successful, None otherwise
+        """
+        try:
+            user_record = self.auth.create_user(**user_data)
+            logger.info(f"Created user {user_record.uid} with email {user_data.get('email')}")
+            return user_record.uid
+            
+        except exceptions.EmailAlreadyExistsError:
+            logger.error(f"User with email {user_data.get('email')} already exists")
+            return None
+        except exceptions.InvalidArgumentError as e:
+            logger.error(f"Invalid user data: {e}")
+            return None
+        except exceptions.FirebaseError as e:
+            self._handle_firebase_error(e, "Creating user")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error creating user: {e}")
+            return None
+
+    async def update_user(self, uid: str, user_data: Dict[str, Any]) -> bool:
+        """
+        Update user record in Firebase Auth.
+        
+        Args:
+            uid: User ID
+            user_data: Updated user data
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self.auth.update_user(uid, **user_data)
+            logger.info(f"Updated user {uid}")
+            return True
+            
+        except exceptions.UserNotFoundError:
+            logger.error(f"User {uid} not found for update")
+            return False
+        except exceptions.InvalidArgumentError as e:
+            logger.error(f"Invalid user data for update: {e}")
+            return False
+        except exceptions.FirebaseError as e:
+            self._handle_firebase_error(e, f"Updating user {uid}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error updating user {uid}: {e}")
+            return False
+
+    async def delete_user(self, uid: str) -> bool:
+        """
+        Delete user from Firebase Auth.
+        
+        Args:
+            uid: User ID
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self.auth.delete_user(uid)
+            logger.info(f"Deleted user {uid} from Firebase Auth")
+            return True
+            
+        except exceptions.UserNotFoundError:
+            logger.error(f"User {uid} not found for deletion")
+            return False
+        except exceptions.FirebaseError as e:
+            self._handle_firebase_error(e, f"Deleting user {uid}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error deleting user {uid}: {e}")
+            return False
 
     async def verify_id_token(self, id_token: str) -> Dict[str, Any]:
         """
@@ -51,25 +293,18 @@ class FirebaseService:
             Dictionary with user claims (uid, email, etc.)
         """
         try:
-            # In production:
-            # decoded_token = self.auth.verify_id_token(id_token)
-            # return decoded_token
+            decoded_token = self.auth.verify_id_token(id_token)
+            return decoded_token
             
-            # Mock implementation
-            # This is a mock - in production, use Firebase's verification
-            mock_payload = {
-                "uid": "mock_user_123",
-                "email": "user@example.com",
-                "iss": f"https://securetoken.google.com/{settings.firebase_project_id}",
-                "aud": settings.firebase_project_id,
-                "exp": 9999999999,  # Far future
-                "iat": 1640995200
-            }
-            return mock_payload
-            
+        except exceptions.InvalidArgumentError as e:
+            logger.error(f"Invalid ID token format: {e}")
+            raise ValueError("Invalid ID token format")
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error verifying ID token: {e}")
+            raise ValueError("Invalid or expired ID token")
         except Exception as e:
-            logger.error(f"Error verifying ID token: {e}")
-            raise ValueError("Invalid ID token")
+            logger.error(f"Unexpected error verifying ID token: {e}")
+            raise ValueError("Token verification failed")
 
     async def create_custom_token(self, uid: str, additional_claims: Optional[Dict] = None) -> str:
         """
@@ -83,15 +318,17 @@ class FirebaseService:
             Custom token string
         """
         try:
-            # In production:
-            # custom_token = self.auth.create_custom_token(uid, additional_claims)
-            # return custom_token.decode('utf-8')
+            custom_token = self.auth.create_custom_token(uid, additional_claims)
+            return custom_token.decode('utf-8')
             
-            # Mock implementation
-            return f"mock_custom_token_{uid}"
-            
+        except exceptions.InvalidArgumentError as e:
+            logger.error(f"Invalid arguments for custom token: {e}")
+            raise ValueError("Invalid user ID or claims")
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error creating custom token: {e}")
+            raise
         except Exception as e:
-            logger.error(f"Error creating custom token: {e}")
+            logger.error(f"Unexpected error creating custom token: {e}")
             raise
 
     async def get_user(self, uid: str) -> Optional[Dict[str, Any]]:
@@ -105,33 +342,43 @@ class FirebaseService:
             User record dictionary or None if not found
         """
         try:
-            # In production:
-            # user_record = self.auth.get_user(uid)
-            # return {
-            #     'uid': user_record.uid,
-            #     'email': user_record.email,
-            #     'display_name': user_record.display_name,
-            #     'provider_data': [p.__dict__ for p in user_record.provider_data],
-            #     'metadata': {
-            #         'creation_timestamp': user_record.user_metadata.creation_timestamp,
-            #         'last_sign_in_timestamp': user_record.user_metadata.last_sign_in_timestamp,
-            #     }
-            # }
-            
-            # Mock implementation
+            user_record = self.auth.get_user(uid)
             return {
-                'uid': uid,
-                'email': 'user@example.com',
-                'display_name': 'Mock User',
-                'provider_data': [],
+                'uid': user_record.uid,
+                'email': user_record.email,
+                'display_name': user_record.display_name,
+                'phone_number': user_record.phone_number,
+                'photo_url': user_record.photo_url,
+                'disabled': user_record.disabled,
+                'email_verified': user_record.email_verified,
+                'provider_data': [
+                    {
+                        'uid': p.uid,
+                        'email': p.email,
+                        'display_name': p.display_name,
+                        'phone_number': p.phone_number,
+                        'photo_url': p.photo_url,
+                        'provider_id': p.provider_id
+                    } for p in user_record.provider_data
+                ],
                 'metadata': {
-                    'creation_timestamp': datetime.utcnow(),
-                    'last_sign_in_timestamp': datetime.utcnow(),
+                    'creation_timestamp': user_record.user_metadata.creation_timestamp,
+                    'last_sign_in_timestamp': user_record.user_metadata.last_sign_in_timestamp,
+                    'last_refresh_timestamp': user_record.user_metadata.last_refresh_timestamp,
                 }
             }
             
+        except exceptions.UserNotFoundError:
+            logger.info(f"User {uid} not found in Firebase Auth")
+            return None
+        except exceptions.InvalidArgumentError as e:
+            logger.error(f"Invalid user ID format: {e}")
+            return None
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error getting user {uid}: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Error getting user {uid}: {e}")
+            logger.error(f"Unexpected error getting user {uid}: {e}")
             return None
 
     async def create_user_document(self, user_profile: UserProfile) -> bool:
@@ -145,17 +392,16 @@ class FirebaseService:
             True if successful, False otherwise
         """
         try:
-            # In production:
-            # doc_ref = self.db.collection('users').document(user_profile.uid)
-            # doc_ref.set(user_profile.dict())
-            # return True
-            
-            # Mock implementation
-            logger.info(f"Mock: Creating user document for {user_profile.uid}")
+            doc_ref = self.db.collection('users').document(user_profile.uid)
+            doc_ref.set(user_profile.dict())
+            logger.info(f"Created user document for {user_profile.uid}")
             return True
             
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error creating user document: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error creating user document: {e}")
+            logger.error(f"Unexpected error creating user document: {e}")
             return False
 
     async def get_user_document(self, uid: str) -> Optional[UserProfile]:
@@ -169,31 +415,19 @@ class FirebaseService:
             UserProfile object or None if not found
         """
         try:
-            # In production:
-            # doc_ref = self.db.collection('users').document(uid)
-            # doc = doc_ref.get()
-            # if doc.exists:
-            #     return UserProfile(**doc.to_dict())
-            # return None
+            doc_ref = self.db.collection('users').document(uid)
+            doc = doc_ref.get()
+            if doc.exists:
+                data = doc.to_dict()
+                return UserProfile(**data)
+            logger.info(f"User document not found for {uid}")
+            return None
             
-            # Mock implementation
-            logger.info(f"Mock: Getting user document for {uid}")
-            return UserProfile(
-                uid=uid,
-                provider=UserProvider.ANONYMOUS,
-                email=None,
-                display_name=None,
-                is_anonymous=True,
-                status=UserStatus.ACTIVE,
-                created_at=datetime.utcnow(),
-                last_login=datetime.utcnow(),
-                preferences=UserPreferences(),
-                total_sessions=0,
-                last_mood_entry=None
-            )
-            
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error getting user document: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Error getting user document: {e}")
+            logger.error(f"Unexpected error getting user document: {e}")
             return None
 
     async def update_user_document(self, uid: str, updates: Dict[str, Any]) -> bool:
@@ -208,17 +442,19 @@ class FirebaseService:
             True if successful, False otherwise
         """
         try:
-            # In production:
-            # doc_ref = self.db.collection('users').document(uid)
-            # doc_ref.update(updates)
-            # return True
-            
-            # Mock implementation
-            logger.info(f"Mock: Updating user document for {uid} with {updates}")
+            doc_ref = self.db.collection('users').document(uid)
+            doc_ref.update(updates)
+            logger.info(f"Updated user document for {uid}")
             return True
             
+        except exceptions.NotFoundError:
+            logger.error(f"User document not found for update: {uid}")
+            return False
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error updating user document: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error updating user document: {e}")
+            logger.error(f"Unexpected error updating user document: {e}")
             return False
 
     async def save_chat_session(self, uid: str, session_data: Dict[str, Any]) -> bool:
@@ -233,17 +469,16 @@ class FirebaseService:
             True if successful, False otherwise
         """
         try:
-            # In production:
-            # doc_ref = self.db.collection('users').document(uid).collection('chat_sessions').document(session_data['session_id'])
-            # doc_ref.set(session_data)
-            # return True
-            
-            # Mock implementation
-            logger.info(f"Mock: Saving chat session for {uid}")
+            doc_ref = self.db.collection('users').document(uid).collection('chat_sessions').document(session_data['session_id'])
+            doc_ref.set(session_data)
+            logger.info(f"Saved chat session {session_data['session_id']} for {uid}")
             return True
             
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error saving chat session: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error saving chat session: {e}")
+            logger.error(f"Unexpected error saving chat session: {e}")
             return False
 
     async def get_chat_session(self, uid: str, session_id: str) -> Optional[Dict[str, Any]]:
@@ -258,24 +493,18 @@ class FirebaseService:
             Session data or None if not found
         """
         try:
-            # In production:
-            # doc_ref = self.db.collection('users').document(uid).collection('chat_sessions').document(session_id)
-            # doc = doc_ref.get()
-            # if doc.exists:
-            #     return doc.to_dict()
-            # return None
+            doc_ref = self.db.collection('users').document(uid).collection('chat_sessions').document(session_id)
+            doc = doc_ref.get()
+            if doc.exists:
+                return doc.to_dict()
+            logger.info(f"Chat session {session_id} not found for {uid}")
+            return None
             
-            # Mock implementation
-            logger.info(f"Mock: Getting chat session {session_id} for {uid}")
-            return {
-                'session_id': session_id,
-                'user_id': uid,
-                'created_at': datetime.utcnow(),
-                'messages': []
-            }
-            
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error getting chat session: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Error getting chat session: {e}")
+            logger.error(f"Unexpected error getting chat session: {e}")
             return None
 
     async def save_mood_entry(self, uid: str, mood_data: Dict[str, Any]) -> bool:
@@ -290,17 +519,16 @@ class FirebaseService:
             True if successful, False otherwise
         """
         try:
-            # In production:
-            # doc_ref = self.db.collection('users').document(uid).collection('mood_entries').document(mood_data['id'])
-            # doc_ref.set(mood_data)
-            # return True
-            
-            # Mock implementation
-            logger.info(f"Mock: Saving mood entry for {uid}")
+            doc_ref = self.db.collection('users').document(uid).collection('mood_entries').document(mood_data['id'])
+            doc_ref.set(mood_data)
+            logger.info(f"Saved mood entry {mood_data['id']} for {uid}")
             return True
             
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error saving mood entry: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error saving mood entry: {e}")
+            logger.error(f"Unexpected error saving mood entry: {e}")
             return False
 
     async def get_mood_entries(self, uid: str, limit: int = 30) -> List[Dict[str, Any]]:
@@ -315,18 +543,18 @@ class FirebaseService:
             List of mood entries
         """
         try:
-            # In production:
-            # collection_ref = self.db.collection('users').document(uid).collection('mood_entries')
-            # query = collection_ref.order_by('date', direction=firestore.Query.DESCENDING).limit(limit)
-            # docs = query.stream()
-            # return [doc.to_dict() for doc in docs]
+            collection_ref = self.db.collection('users').document(uid).collection('mood_entries')
+            query = collection_ref.order_by('date', direction=firestore.Query.DESCENDING).limit(limit)
+            docs = query.stream()
+            entries = [doc.to_dict() for doc in docs]
+            logger.info(f"Retrieved {len(entries)} mood entries for {uid}")
+            return entries
             
-            # Mock implementation
-            logger.info(f"Mock: Getting mood entries for {uid}")
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error getting mood entries: {e}")
             return []
-            
         except Exception as e:
-            logger.error(f"Error getting mood entries: {e}")
+            logger.error(f"Unexpected error getting mood entries: {e}")
             return []
 
     async def save_journal_entry(self, uid: str, journal_data: Dict[str, Any]) -> bool:
@@ -341,17 +569,16 @@ class FirebaseService:
             True if successful, False otherwise
         """
         try:
-            # In production:
-            # doc_ref = self.db.collection('users').document(uid).collection('journal_entries').document(journal_data['id'])
-            # doc_ref.set(journal_data)
-            # return True
-            
-            # Mock implementation
-            logger.info(f"Mock: Saving journal entry for {uid}")
+            doc_ref = self.db.collection('users').document(uid).collection('journal_entries').document(journal_data['id'])
+            doc_ref.set(journal_data)
+            logger.info(f"Saved journal entry {journal_data['id']} for {uid}")
             return True
             
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error saving journal entry: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error saving journal entry: {e}")
+            logger.error(f"Unexpected error saving journal entry: {e}")
             return False
 
     async def get_journal_entries(self, uid: str, limit: int = 20) -> List[Dict[str, Any]]:
@@ -366,18 +593,18 @@ class FirebaseService:
             List of journal entries
         """
         try:
-            # In production:
-            # collection_ref = self.db.collection('users').document(uid).collection('journal_entries')
-            # query = collection_ref.order_by('created_at', direction=firestore.Query.DESCENDING).limit(limit)
-            # docs = query.stream()
-            # return [doc.to_dict() for doc in docs]
+            collection_ref = self.db.collection('users').document(uid).collection('journal_entries')
+            query = collection_ref.order_by('created_at', direction=firestore.Query.DESCENDING).limit(limit)
+            docs = query.stream()
+            entries = [doc.to_dict() for doc in docs]
+            logger.info(f"Retrieved {len(entries)} journal entries for {uid}")
+            return entries
             
-            # Mock implementation
-            logger.info(f"Mock: Getting journal entries for {uid}")
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error getting journal entries: {e}")
             return []
-            
         except Exception as e:
-            logger.error(f"Error getting journal entries: {e}")
+            logger.error(f"Unexpected error getting journal entries: {e}")
             return []
 
     async def save_meditation_session(self, uid: str, meditation_data: Dict[str, Any]) -> bool:
@@ -392,17 +619,16 @@ class FirebaseService:
             True if successful, False otherwise
         """
         try:
-            # In production:
-            # doc_ref = self.db.collection('users').document(uid).collection('meditation_sessions').document(meditation_data['id'])
-            # doc_ref.set(meditation_data)
-            # return True
-            
-            # Mock implementation
-            logger.info(f"Mock: Saving meditation session for {uid}")
+            doc_ref = self.db.collection('users').document(uid).collection('meditation_sessions').document(meditation_data['id'])
+            doc_ref.set(meditation_data)
+            logger.info(f"Saved meditation session {meditation_data['id']} for {uid}")
             return True
             
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error saving meditation session: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error saving meditation session: {e}")
+            logger.error(f"Unexpected error saving meditation session: {e}")
             return False
 
     async def batch_write(self, operations: List[Dict[str, Any]]) -> bool:
@@ -411,27 +637,121 @@ class FirebaseService:
         
         Args:
             operations: List of operations to perform
+            Each operation should have:
+            - type: 'set', 'update', or 'delete'
+            - collection: collection path
+            - document: document ID
+            - data: data to write (for set/update operations)
             
         Returns:
             True if successful, False otherwise
         """
         try:
-            # In production:
-            # batch = self.db.batch()
-            # for op in operations:
-            #     if op['type'] == 'set':
-            #         batch.set(op['ref'], op['data'])
-            #     elif op['type'] == 'update':
-            #         batch.update(op['ref'], op['data'])
-            #     elif op['type'] == 'delete':
-            #         batch.delete(op['ref'])
-            # batch.commit()
-            # return True
+            batch = self.db.batch()
             
-            # Mock implementation
-            logger.info(f"Mock: Performing batch write with {len(operations)} operations")
+            for op in operations:
+                if 'collection' in op and 'document' in op:
+                    doc_ref = self.db.collection(op['collection']).document(op['document'])
+                elif 'ref' in op:
+                    # Support legacy format with direct reference
+                    doc_ref = op['ref']
+                else:
+                    logger.error(f"Invalid operation format: {op}")
+                    continue
+                
+                if op['type'] == 'set':
+                    batch.set(doc_ref, op['data'])
+                elif op['type'] == 'update':
+                    batch.update(doc_ref, op['data'])
+                elif op['type'] == 'delete':
+                    batch.delete(doc_ref)
+                else:
+                    logger.error(f"Unknown operation type: {op['type']}")
+                    continue
+            
+            batch.commit()
+            logger.info(f"Successfully completed batch write with {len(operations)} operations")
             return True
             
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error performing batch write: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error performing batch write: {e}")
+            logger.error(f"Unexpected error performing batch write: {e}")
+            return False
+
+    async def get_user_collections_data(self, uid: str) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get all user's collection data for analytics or export.
+        
+        Args:
+            uid: User ID
+            
+        Returns:
+            Dictionary with collection names as keys and document lists as values
+        """
+        try:
+            user_data = {}
+            collections = ['chat_sessions', 'mood_entries', 'journal_entries', 'meditation_sessions']
+            
+            for collection_name in collections:
+                collection_ref = self.db.collection('users').document(uid).collection(collection_name)
+                docs = collection_ref.stream()
+                user_data[collection_name] = [doc.to_dict() for doc in docs]
+                
+            logger.info(f"Retrieved all collection data for {uid}")
+            return user_data
+            
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error getting user collections: {e}")
+            return {}
+        except Exception as e:
+            logger.error(f"Unexpected error getting user collections: {e}")
+            return {}
+
+    async def delete_user_data(self, uid: str) -> bool:
+        """
+        Delete all user data from Firestore (for GDPR compliance).
+        
+        Args:
+            uid: User ID
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Delete all subcollections first
+            collections = ['chat_sessions', 'mood_entries', 'journal_entries', 'meditation_sessions']
+            
+            for collection_name in collections:
+                collection_ref = self.db.collection('users').document(uid).collection(collection_name)
+                docs = collection_ref.list_documents()
+                
+                # Delete in batches to avoid timeout
+                batch = self.db.batch()
+                count = 0
+                
+                for doc in docs:
+                    batch.delete(doc)
+                    count += 1
+                    
+                    if count >= 500:  # Firestore batch limit
+                        batch.commit()
+                        batch = self.db.batch()
+                        count = 0
+                
+                if count > 0:
+                    batch.commit()
+            
+            # Delete main user document
+            self.db.collection('users').document(uid).delete()
+            
+            logger.info(f"Successfully deleted all data for user {uid}")
+            return True
+            
+        except exceptions.FirebaseError as e:
+            logger.error(f"Firebase error deleting user data: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error deleting user data: {e}")
             return False
