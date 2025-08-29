@@ -30,6 +30,7 @@ class Settings(BaseModel):
     
     # Security
     allowed_origins: list[str] = [
+        "*",
         "http://localhost:3000",
         "http://localhost:8080",
         "https://mitra-ai.web.app",

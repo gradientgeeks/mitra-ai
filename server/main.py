@@ -2,9 +2,11 @@
 Main FastAPI application for Mitra AI server.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 import uvicorn
@@ -96,6 +98,20 @@ async def health_check():
         "environment": settings.environment,
         "timestamp": "2025-08-28T00:00:00Z"
     }
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle validation errors with detailed information."""
+    logger.error(f"Validation error on {request.method} {request.url}: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Validation error",
+            "errors": exc.errors(),
+            "body": str(exc.body) if hasattr(exc, 'body') else None
+        }
+    )
 
 
 @app.exception_handler(Exception)

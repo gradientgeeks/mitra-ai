@@ -99,6 +99,7 @@ class UserProfile(BaseModel):
     age_group: Optional[AgeGroup] = None
     birth_year: Optional[int] = Field(None, ge=1950, le=2010)
     onboarding_completed: bool = False
+    mitra_profile_image_url: Optional[str] = None
 
 
 class CreateUserRequest(BaseModel):
@@ -150,3 +151,4 @@ class UserResponse(BaseModel):
     age_group: Optional[AgeGroup] = None
     birth_year: Optional[int] = None
     onboarding_completed: bool = False
+    mitra_profile_image_url: Optional[str] = None

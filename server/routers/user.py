@@ -37,34 +37,71 @@ async def get_current_user_optional(authorization: str = Header(None)) -> Option
     if not authorization or not authorization.startswith("Bearer "):
         return None
     
-    token = authorization.split(" ")[1]
-    return f"user_{hash(token) % 10000}"  # Mock user ID
+    try:
+        token = authorization.split(" ")[1]
+        firebase_service = FirebaseService()
+        token_claims = await firebase_service.verify_id_token(token)
+        return token_claims.get("uid")
+    except Exception:
+        return None
 
 async def get_current_user(authorization: str = Header(None)) -> str:
     """Extract user ID from authorization header (required)."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
     
-    token = authorization.split(" ")[1]
-    return f"user_{hash(token) % 10000}"  # Mock user ID
+    try:
+        token = authorization.split(" ")[1]
+        firebase_service = FirebaseService()
+        token_claims = await firebase_service.verify_id_token(token)
+        user_id = token_claims.get("uid")
+        
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token - no user ID found")
+        
+        return user_id
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Token verification failed: {e}")
+        raise HTTPException(status_code=401, detail="Invalid authorization token")
 
 
 @router.post("/create-anonymous", response_model=UserResponse)
 async def create_anonymous_user(
-    request: CreateUserRequest = CreateUserRequest(),
+    current_user_id: str = Depends(get_current_user),
     firebase_service: FirebaseService = Depends(get_firebase_service),
     repository: FirestoreRepository = Depends(get_repository)
 ):
-    """Create a new anonymous user."""
+    """Create anonymous user in backend after Firebase Auth."""
+    logger.info(f"Creating anonymous user for Firebase UID: {current_user_id}")
+    
     try:
-        # In production, create anonymous user with Firebase Auth
-        # For now, generate a mock user
-        import uuid
-        user_id = f"anon_{str(uuid.uuid4())[:8]}"
+        logger.info(f"Create anonymous user request for: {current_user_id}")
         
-        # Create user profile
+        # Check if user already exists
+        existing_user = await repository.get_user(current_user_id)
+        if existing_user:
+            return UserResponse(
+                uid=existing_user.uid,
+                provider=existing_user.provider,
+                email=existing_user.email,
+                display_name=existing_user.display_name,
+                is_anonymous=existing_user.is_anonymous,
+                status=existing_user.status,
+                created_at=existing_user.created_at,
+                last_login=existing_user.last_login,
+                preferences=existing_user.preferences,
+                total_sessions=existing_user.total_sessions,
+                last_mood_entry=existing_user.last_mood_entry,
+                age_group=existing_user.age_group,
+                birth_year=existing_user.birth_year,
+                onboarding_completed=existing_user.onboarding_completed
+            )
+        
+        # Create user profile with actual Firebase user ID
         user_profile = UserProfile(
-            uid=user_id,
+            uid=current_user_id,
             provider=UserProvider.ANONYMOUS,
             email=None,
             display_name=None,
@@ -72,7 +109,7 @@ async def create_anonymous_user(
             status=UserStatus.ACTIVE,
             created_at=datetime.utcnow(),
             last_login=datetime.utcnow(),
-            preferences=request.preferences or UserPreferences(),
+            preferences=UserPreferences(),
             total_sessions=0,
             last_mood_entry=None
         )
@@ -93,7 +130,10 @@ async def create_anonymous_user(
             last_login=user_profile.last_login,
             preferences=user_profile.preferences,
             total_sessions=user_profile.total_sessions,
-            last_mood_entry=user_profile.last_mood_entry
+            last_mood_entry=user_profile.last_mood_entry,
+            age_group=user_profile.age_group,
+            birth_year=user_profile.birth_year,
+            onboarding_completed=user_profile.onboarding_completed
         )
         
     except Exception as e:
@@ -110,6 +150,9 @@ async def complete_user_onboarding(
 ):
     """Complete user onboarding with personalization."""
     try:
+        logger.info(f"Onboarding request received for user {current_user}")
+        logger.info(f"Request data: {request.dict()}")
+        
         # Get existing user profile
         user_profile = await repository.get_user(current_user)
         if not user_profile:

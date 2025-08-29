@@ -1,13 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
+import '../models/user_model.dart';
 
 class ChatScreen extends ConsumerWidget {
   const ChatScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final userAsync = ref.watch(userDocumentProvider);
+    final authState = ref.watch(authControllerProvider);
+
+    return authState.when(
+      data: (state) => _buildChatContent(context, ref, state.backendUser),
+      loading: () => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, stack) => Scaffold(
+        body: Center(
+          child: Text('Error: $error'),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatContent(BuildContext context, WidgetRef ref, UserModel? user) {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
@@ -26,7 +42,7 @@ class ChatScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Chat with Mitra',
+                  'Chat with ${user?.preferences.mitraName ?? 'Mitra'}',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: const Color(0xFF2C3E50),
@@ -62,10 +78,10 @@ class ChatScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             margin: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF27AE60).withOpacity(0.1),
+              color: const Color(0xFF27AE60).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: const Color(0xFF27AE60).withOpacity(0.3),
+                color: const Color(0xFF27AE60).withValues(alpha: 0.3),
                 width: 1,
               ),
             ),
@@ -99,7 +115,7 @@ class ChatScreen extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, 5),
                   ),
@@ -118,7 +134,7 @@ class ChatScreen extends ConsumerWidget {
                             Icon(
                               Icons.chat_bubble_outline,
                               size: 64,
-                              color: const Color(0xFF3498DB).withOpacity(0.6),
+                              color: const Color(0xFF3498DB).withValues(alpha: 0.6),
                             ),
                             const SizedBox(height: 16),
                             Text(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import 'login_screen.dart';
+import 'onboarding_screen.dart';
 import 'main_navigation_screen.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -53,14 +54,23 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   void _checkAuthState() {
-    final authState = ref.read(authStateProvider);
+    final authState = ref.read(authControllerProvider);
     authState.when(
-      data: (user) {
-        if (user != null) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
-          );
+      data: (state) {
+        if (state.isAuthenticated) {
+          if (state.needsOnboarding) {
+            // User is authenticated but needs onboarding
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+            );
+          } else {
+            // User is authenticated and onboarded
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+            );
+          }
         } else {
+          // User is not authenticated
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => const LoginScreen()),
           );
@@ -69,12 +79,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       loading: () {
         // Stay on splash screen while loading
         Future.delayed(const Duration(milliseconds: 1000), () {
-          if (mounted) {
-            _checkAuthState();
-          }
+          if (mounted) _checkAuthState();
         });
       },
       error: (error, stackTrace) {
+        // On error, go to login screen
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const LoginScreen()),
         );

@@ -168,39 +168,29 @@ class VoiceService(BaseGeminiService):
         """
         voices = [
             {
-                "name": VoiceOption.PUCK.value,
-                "display_name": "Puck",
-                "description": "Friendly and energetic voice, good for younger users",
-                "gender": "neutral",
-                "language": "en"
+                "value": VoiceOption.PUCK.value,
+                "label": "Puck",
+                "description": "Friendly and energetic voice, good for younger users"
             },
             {
-                "name": VoiceOption.CHARON.value,
-                "display_name": "Charon", 
-                "description": "Calm and reassuring voice, suitable for meditation",
-                "gender": "male",
-                "language": "en"
+                "value": VoiceOption.CHARON.value,
+                "label": "Charon",
+                "description": "Calm and reassuring voice, suitable for meditation"
             },
             {
-                "name": VoiceOption.KORE.value,
-                "display_name": "Kore",
-                "description": "Warm and supportive voice, ideal for counseling",
-                "gender": "female", 
-                "language": "en"
+                "value": VoiceOption.KORE.value,
+                "label": "Kore",
+                "description": "Warm and supportive voice, ideal for counseling"
             },
             {
-                "name": VoiceOption.FENRIR.value,
-                "display_name": "Fenrir",
-                "description": "Strong and confident voice, good for motivation",
-                "gender": "male",
-                "language": "en"
+                "value": VoiceOption.FENRIR.value,
+                "label": "Fenrir",
+                "description": "Strong and confident voice, good for motivation"
             },
             {
-                "name": VoiceOption.AOEDE.value,
-                "display_name": "Aoede",
-                "description": "Gentle and soothing voice, perfect for relaxation",
-                "gender": "female",
-                "language": "en"
+                "value": VoiceOption.AOEDE.value,
+                "label": "Aoede",
+                "description": "Gentle and soothing voice, perfect for relaxation"
             }
         ]
         return voices
@@ -215,7 +205,7 @@ class VoiceService(BaseGeminiService):
         Returns:
             True if voice is supported, False otherwise
         """
-        available_voices = [v["name"] for v in self.get_available_voices()]
+        available_voices = [v["value"] for v in self.get_available_voices()]
         return voice in available_voices
 
     def get_recommended_voice_for_age(self, age_group: str) -> str:
