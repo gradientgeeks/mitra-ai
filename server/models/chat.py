@@ -7,6 +7,9 @@ from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
 
+# Import problem categories from user models
+from models.user import ProblemCategory
+
 
 class MessageRole(str, Enum):
     """Message roles in conversation."""
@@ -68,6 +71,8 @@ class ChatSession(BaseModel):
     is_active: bool = True
     context_summary: Optional[str] = None
     total_messages: int = 0
+    problem_category: Optional[ProblemCategory] = None
+    generated_resources: List[Dict[str, Any]] = []
 
 
 class TextChatRequest(BaseModel):
@@ -76,6 +81,7 @@ class TextChatRequest(BaseModel):
     session_id: Optional[str] = None
     include_grounding: bool = False
     generate_image: bool = False
+    problem_category: Optional[ProblemCategory] = None
 
 
 class VoiceChatRequest(BaseModel):
@@ -84,6 +90,7 @@ class VoiceChatRequest(BaseModel):
     sample_rate: int = Field(default=16000, description="Audio sample rate")
     session_id: Optional[str] = None
     response_format: str = Field(default="audio", pattern="^(audio|text)$")
+    problem_category: Optional[ProblemCategory] = None
 
 
 class ChatResponse(BaseModel):
@@ -98,6 +105,7 @@ class ChatResponse(BaseModel):
     grounding_sources: Optional[List[Dict[str, str]]] = None
     timestamp: datetime
     thinking_text: Optional[str] = None
+    generated_resources: Optional[List[Dict[str, Any]]] = None
 
 
 class MultimodalChatRequest(BaseModel):
@@ -106,6 +114,7 @@ class MultimodalChatRequest(BaseModel):
     image_data: Optional[bytes] = None
     session_id: Optional[str] = None
     operation: str = Field(default="describe", pattern="^(describe|edit|generate)$")
+    problem_category: Optional[ProblemCategory] = None
 
 
 class SessionSummaryRequest(BaseModel):
@@ -126,6 +135,8 @@ class SessionSummaryResponse(BaseModel):
     context_summary: Optional[str] = None
     recent_messages: Optional[List[ChatMessage]] = None
     is_active: bool
+    problem_category: Optional[ProblemCategory] = None
+    generated_resources: List[Dict[str, Any]] = []
 
 
 class CrisisResponse(BaseModel):
@@ -136,3 +147,44 @@ class CrisisResponse(BaseModel):
     helplines: Dict[str, Dict[str, str]]
     immediate_actions: List[str]
     timestamp: datetime
+
+
+class ResourceType(str, Enum):
+    """Types of generated resources."""
+    MEDITATION = "meditation"
+    BREATHING_EXERCISE = "breathing_exercise"
+    COPING_STRATEGIES = "coping_strategies"
+    AFFIRMATIONS = "affirmations"
+    ARTICLES = "articles"
+    VIDEOS = "videos"
+    WORKSHEETS = "worksheets"
+    EMERGENCY_CONTACTS = "emergency_contacts"
+
+
+class GeneratedResource(BaseModel):
+    """Resource generated based on session content."""
+    id: str
+    type: ResourceType
+    title: str
+    description: str
+    content: str
+    duration_minutes: Optional[int] = None
+    difficulty_level: str = Field("beginner", pattern="^(beginner|intermediate|advanced)$")
+    tags: List[str] = []
+    created_at: datetime
+    problem_category: ProblemCategory
+
+
+class SessionResourcesRequest(BaseModel):
+    """Request to generate resources for a session."""
+    session_id: str
+    resource_types: List[ResourceType] = []
+    max_resources: int = Field(default=3, ge=1, le=10)
+
+
+class SessionResourcesResponse(BaseModel):
+    """Response with generated session resources."""
+    session_id: str
+    resources: List[GeneratedResource]
+    problem_category: ProblemCategory
+    generated_at: datetime

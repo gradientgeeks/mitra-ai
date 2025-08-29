@@ -10,10 +10,12 @@ from fastapi import APIRouter, HTTPException, Depends, Header
 
 from models.user import (
     UserProfile, UserResponse, CreateUserRequest, UpdateUserRequest,
-    LinkAccountRequest, UserProvider, UserStatus, UserPreferences
+    LinkAccountRequest, UserProvider, UserStatus, UserPreferences,
+    OnboardingRequest, AgeGroup, Gender, VoiceOption
 )
 from models.common import APIResponse, ErrorResponse, ErrorType
 from services.firebase_service import FirebaseService
+from services.voice_service import VoiceService
 from repository.firestore_repository import FirestoreRepository
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,9 @@ def get_firebase_service() -> FirebaseService:
 
 def get_repository() -> FirestoreRepository:
     return FirestoreRepository()
+
+def get_voice_service() -> VoiceService:
+    return VoiceService()
 
 async def get_current_user_optional(authorization: str = Header(None)) -> Optional[str]:
     """Extract user ID from authorization header (optional)."""
@@ -96,6 +101,106 @@ async def create_anonymous_user(
         raise HTTPException(status_code=500, detail="Failed to create user")
 
 
+@router.post("/onboarding", response_model=UserResponse)
+async def complete_user_onboarding(
+    request: OnboardingRequest,
+    current_user: str = Depends(get_current_user),
+    repository: FirestoreRepository = Depends(get_repository),
+    voice_service: VoiceService = Depends(get_voice_service)
+):
+    """Complete user onboarding with personalization."""
+    try:
+        # Get existing user profile
+        user_profile = await repository.get_user(current_user)
+        if not user_profile:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Validate voice preference
+        if not voice_service.validate_voice_preference(request.preferred_voice.value):
+            raise HTTPException(status_code=400, detail="Invalid voice preference")
+        
+        # Update user preferences with onboarding data
+        updated_preferences = UserPreferences(
+            language=request.language,
+            notification_enabled=request.notification_enabled,
+            voice_enabled=True,
+            meditation_reminders=request.meditation_reminders,
+            journal_reminders=request.journal_reminders,
+            crisis_support_enabled=True,
+            preferred_voice=request.preferred_voice,
+            mitra_name=request.mitra_name,
+            mitra_gender=request.mitra_gender,
+            age_group=request.age_group,
+            onboarding_completed=True
+        )
+        
+        # Update user profile
+        update_data = {
+            "preferences": updated_preferences.model_dump(),
+            "age_group": request.age_group.value,
+            "birth_year": request.birth_year,
+            "onboarding_completed": True,
+            "updated_at": datetime.utcnow()
+        }
+        
+        success = await repository.update_user(current_user, update_data)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update user profile")
+        
+        # Get updated user profile
+        updated_profile = await repository.get_user(current_user)
+        
+        return UserResponse(
+            uid=updated_profile.uid,
+            provider=updated_profile.provider,
+            email=updated_profile.email,
+            display_name=updated_profile.display_name,
+            is_anonymous=updated_profile.is_anonymous,
+            status=updated_profile.status,
+            created_at=updated_profile.created_at,
+            last_login=updated_profile.last_login,
+            preferences=updated_profile.preferences,
+            total_sessions=updated_profile.total_sessions,
+            last_mood_entry=updated_profile.last_mood_entry,
+            age_group=updated_profile.age_group,
+            birth_year=updated_profile.birth_year,
+            onboarding_completed=updated_profile.onboarding_completed
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing onboarding: {e}")
+        raise HTTPException(status_code=500, detail="Failed to complete onboarding")
+
+
+@router.get("/onboarding/options")
+async def get_onboarding_options(
+    voice_service: VoiceService = Depends(get_voice_service)
+):
+    """Get available options for user onboarding."""
+    try:
+        return {
+            "age_groups": [
+                {"value": age.value, "label": age.value.replace("_", " ").title()}
+                for age in AgeGroup
+            ],
+            "genders": [
+                {"value": gender.value, "label": gender.value.replace("_", " ").title()}
+                for gender in Gender
+            ],
+            "voices": voice_service.get_available_voices(),
+            "sample_mitra_names": [
+                "Mitra", "Sakhi", "Suhana", "Aryan", "Kiran", 
+                "Priya", "Rahul", "Ananya", "Dev", "Ishita"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting onboarding options: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get onboarding options")
+
+
 @router.get("/profile", response_model=UserResponse)
 async def get_user_profile(
     current_user: str = Depends(get_current_user),
@@ -118,7 +223,10 @@ async def get_user_profile(
             last_login=user_profile.last_login,
             preferences=user_profile.preferences,
             total_sessions=user_profile.total_sessions,
-            last_mood_entry=user_profile.last_mood_entry
+            last_mood_entry=user_profile.last_mood_entry,
+            age_group=user_profile.age_group,
+            birth_year=user_profile.birth_year,
+            onboarding_completed=user_profile.onboarding_completed
         )
         
     except HTTPException:

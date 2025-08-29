@@ -26,9 +26,15 @@ class GeminiService(BaseGeminiService):
     
     # Text generation methods - delegate to TextGenerationService
     async def generate_text_response(self, messages, config=None, include_grounding=False):
-        """Generate text response using Gemini."""
-        return await self.text_service.generate_text_response(
+        """Generate text response using Gemini (legacy method)."""
+        return await self.text_service.generate_text_response_legacy(
             messages, config, include_grounding
+        )
+    
+    async def generate_personalized_text_response(self, messages, user_profile=None, problem_category=None, config=None, include_grounding=False):
+        """Generate personalized text response using Gemini."""
+        return await self.text_service.generate_text_response(
+            messages, user_profile, problem_category, config, include_grounding
         )
     
     async def generate_structured_content(self, prompt, schema):
@@ -36,9 +42,9 @@ class GeminiService(BaseGeminiService):
         return await self.text_service.generate_structured_content(prompt, schema)
     
     # Voice methods - delegate to VoiceService
-    async def generate_voice_response(self, messages, voice="Puck", language="en"):
-        """Generate voice response using Gemini Live API."""
-        return await self.voice_service.generate_voice_response(messages, voice, language)
+    async def generate_voice_response(self, messages, user_profile=None, problem_category=None, voice=None, language="en"):
+        """Generate personalized voice response using Gemini Live API."""
+        return await self.voice_service.generate_voice_response(messages, user_profile, problem_category, voice, language)
     
     async def process_voice_input(self, audio_data, sample_rate=16000):
         """Process voice input and convert to text."""

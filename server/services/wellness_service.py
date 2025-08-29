@@ -5,13 +5,15 @@ Handles meditation scripts, wellness insights, and mental health content.
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from google.genai import types
 
 from .base_gemini_service import BaseGeminiService
 from .text_generation_service import TextGenerationService
 from core.config import settings
+from models.user import UserProfile, AgeGroup, ProblemCategory
+from models.chat import ResourceType, GeneratedResource
 
 logger = logging.getLogger(__name__)
 
@@ -264,3 +266,217 @@ class WellnessService(BaseGeminiService):
         except Exception as e:
             logger.error(f"Error generating mood check-in: {e}")
             raise
+
+    async def generate_personalized_content(
+        self,
+        user_profile: UserProfile,
+        content_type: str,
+        specific_request: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate age-appropriate and personalized wellness content.
+        
+        Args:
+            user_profile: User's profile with age and preferences
+            content_type: Type of content to generate
+            specific_request: Specific user request
+            
+        Returns:
+            Personalized wellness content
+        """
+        try:
+            # Get personalized system instruction
+            system_instruction = self.get_personalized_system_instruction(user_profile)
+            
+            # Age-specific content guidelines
+            age_guidelines = {
+                AgeGroup.TEEN: "Focus on school stress, peer pressure, identity questions, family expectations",
+                AgeGroup.YOUNG_ADULT: "Address career decisions, independence, relationships, future planning",
+                AgeGroup.ADULT: "Cover work-life balance, responsibilities, relationship management",
+                AgeGroup.MATURE_ADULT: "Include family leadership, career stability, health awareness"
+            }
+            
+            age_context = age_guidelines.get(user_profile.age_group, "")
+            mitra_name = user_profile.preferences.mitra_name if user_profile.preferences else "Mitra"
+            
+            prompt = f"""
+            As {mitra_name}, create personalized {content_type} content for this user.
+            
+            User Context:
+            - Age Group: {user_profile.age_group}
+            - Specific Focus: {age_context}
+            - Mitra Name: {mitra_name}
+            
+            {f"Specific Request: {specific_request}" if specific_request else ""}
+            
+            Create content that is:
+            - Age-appropriate and culturally sensitive
+            - Relevant to their life stage
+            - Warm and supportive
+            - Practical and actionable
+            """
+            
+            response = await self.client.models.generate_content(
+                model=settings.gemini_model,
+                contents=[prompt],
+                config={"system_instruction": system_instruction}
+            )
+            
+            return {
+                "content": response.text,
+                "age_group": user_profile.age_group,
+                "mitra_name": mitra_name,
+                "content_type": content_type
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating personalized content: {e}")
+            raise
+
+    async def generate_session_resources(
+        self,
+        problem_category: ProblemCategory,
+        user_profile: UserProfile,
+        session_context: str,
+        resource_types: Optional[List[ResourceType]] = None
+    ) -> List[GeneratedResource]:
+        """
+        Generate helpful resources based on session content and problem category.
+        
+        Args:
+            problem_category: The main problem discussed in session
+            user_profile: User's profile for personalization
+            session_context: Summary of session conversation
+            resource_types: Specific types of resources to generate
+            
+        Returns:
+            List of generated resources
+        """
+        try:
+            if not resource_types:
+                # Default resources based on problem category
+                resource_mapping = {
+                    ProblemCategory.STRESS_ANXIETY: [ResourceType.BREATHING_EXERCISE, ResourceType.MEDITATION, ResourceType.COPING_STRATEGIES],
+                    ProblemCategory.DEPRESSION_SADNESS: [ResourceType.AFFIRMATIONS, ResourceType.COPING_STRATEGIES, ResourceType.ARTICLES],
+                    ProblemCategory.RELATIONSHIP_ISSUES: [ResourceType.COPING_STRATEGIES, ResourceType.ARTICLES, ResourceType.WORKSHEETS],
+                    ProblemCategory.ACADEMIC_PRESSURE: [ResourceType.COPING_STRATEGIES, ResourceType.MEDITATION, ResourceType.WORKSHEETS],
+                    ProblemCategory.FAMILY_PROBLEMS: [ResourceType.COPING_STRATEGIES, ResourceType.AFFIRMATIONS, ResourceType.ARTICLES]
+                }
+                resource_types = resource_mapping.get(problem_category, [ResourceType.COPING_STRATEGIES, ResourceType.AFFIRMATIONS])
+            
+            resources = []
+            system_instruction = self.get_personalized_system_instruction(user_profile, problem_category)
+            mitra_name = user_profile.preferences.mitra_name if user_profile.preferences else "Mitra"
+            
+            for resource_type in resource_types[:3]:  # Limit to 3 resources
+                resource = await self._generate_single_resource(
+                    resource_type, problem_category, user_profile, session_context, system_instruction, mitra_name
+                )
+                if resource:
+                    resources.append(resource)
+                    
+            return resources
+            
+        except Exception as e:
+            logger.error(f"Error generating session resources: {e}")
+            raise
+
+    async def _generate_single_resource(
+        self,
+        resource_type: ResourceType,
+        problem_category: ProblemCategory,
+        user_profile: UserProfile,
+        session_context: str,
+        system_instruction: str,
+        mitra_name: str
+    ) -> Optional[GeneratedResource]:
+        """Generate a single resource of specified type."""
+        try:
+            from datetime import datetime
+            import uuid
+            
+            # Resource-specific prompts
+            prompts = {
+                ResourceType.MEDITATION: f"""
+                Create a guided meditation script specifically for {problem_category.value.replace('_', ' ')}.
+                Duration: 5-10 minutes
+                Target: {user_profile.age_group.value.replace('_', ' ')} age group
+                Context: {session_context}
+                
+                Make it practical, soothing, and culturally appropriate for Indian users.
+                """,
+                
+                ResourceType.BREATHING_EXERCISE: f"""
+                Design a breathing exercise for {problem_category.value.replace('_', ' ')}.
+                Duration: 3-5 minutes
+                Age group: {user_profile.age_group.value.replace('_', ' ')}
+                Context: {session_context}
+                
+                Include clear, step-by-step instructions that are easy to follow.
+                """,
+                
+                ResourceType.COPING_STRATEGIES: f"""
+                Provide 5-7 practical coping strategies for {problem_category.value.replace('_', ' ')}.
+                Target: {user_profile.age_group.value.replace('_', ' ')} in Indian context
+                Session context: {session_context}
+                
+                Make strategies actionable, culturally sensitive, and age-appropriate.
+                """,
+                
+                ResourceType.AFFIRMATIONS: f"""
+                Create 8-10 positive affirmations for someone dealing with {problem_category.value.replace('_', ' ')}.
+                Age group: {user_profile.age_group.value.replace('_', ' ')}
+                Context: {session_context}
+                
+                Make them empowering, culturally relevant, and authentic to Indian values.
+                """
+            }
+            
+            prompt = prompts.get(resource_type, "")
+            if not prompt:
+                return None
+                
+            response = await self.client.models.generate_content(
+                model=settings.gemini_model,
+                contents=[prompt],
+                config={"system_instruction": system_instruction}
+            )
+            
+            # Generate title and description
+            title_prompt = f"Create a short, engaging title for this {resource_type.value} resource about {problem_category.value.replace('_', ' ')}"
+            title_response = await self.client.models.generate_content(
+                model=settings.gemini_model,
+                contents=[title_prompt]
+            )
+            
+            desc_prompt = f"Write a brief 1-2 sentence description for this {resource_type.value} resource"
+            desc_response = await self.client.models.generate_content(
+                model=settings.gemini_model,
+                contents=[desc_prompt]
+            )
+            
+            # Determine duration and difficulty
+            duration = None
+            if resource_type in [ResourceType.MEDITATION, ResourceType.BREATHING_EXERCISE]:
+                duration = 5 if resource_type == ResourceType.BREATHING_EXERCISE else 8
+                
+            difficulty = "beginner"
+            if user_profile.age_group in [AgeGroup.ADULT, AgeGroup.MATURE_ADULT]:
+                difficulty = "intermediate"
+            
+            return GeneratedResource(
+                id=str(uuid.uuid4()),
+                type=resource_type,
+                title=title_response.text.strip(),
+                description=desc_response.text.strip(),
+                content=response.text,
+                duration_minutes=duration,
+                difficulty_level=difficulty,
+                tags=[problem_category.value, user_profile.age_group.value],
+                created_at=datetime.utcnow(),
+                problem_category=problem_category
+            )
+            
+        except Exception as e:
+            logger.error(f"Error generating {resource_type} resource: {e}")
+            return None

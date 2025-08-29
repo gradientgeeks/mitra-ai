@@ -5,13 +5,14 @@ Handles voice input/output and Live API interactions.
 
 import asyncio
 import logging
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 
 from google.genai import types
 
 from .base_gemini_service import BaseGeminiService
 from core.config import settings
 from models.chat import ChatMessage
+from models.user import UserProfile, VoiceOption, ProblemCategory
 
 logger = logging.getLogger(__name__)
 
@@ -22,33 +23,58 @@ class VoiceService(BaseGeminiService):
     async def generate_voice_response(
         self,
         messages: List[ChatMessage],
-        voice: str = "Puck",
+        user_profile: Optional[UserProfile] = None,
+        problem_category: Optional[ProblemCategory] = None,
+        voice: Optional[str] = None,
         language: str = "en"
     ) -> Tuple[bytes, Optional[str]]:
         """
-        Generate voice response using Gemini Live API.
+        Generate personalized voice response using Gemini Live API.
         
         Args:
             messages: Conversation history
-            voice: Voice to use for generation
+            user_profile: User profile for personalization
+            problem_category: Current session problem category
+            voice: Voice to use (overrides user preference)
             language: Language code
             
         Returns:
             Tuple of (audio_data, transcription)
         """
         try:
+            # Determine voice from user preferences or default
+            selected_voice = voice
+            if not selected_voice and user_profile and user_profile.preferences:
+                selected_voice = user_profile.preferences.preferred_voice.value
+            if not selected_voice:
+                selected_voice = "Puck"
+            
+            # Get personalized system instruction
+            system_instruction = None
+            if user_profile:
+                system_instruction = self.get_personalized_system_instruction(user_profile, problem_category)
+            
             # Convert messages to text format for Live API
             conversation_text = self._convert_messages_to_text(messages)
+            
+            # Add personalized context if available
+            if user_profile and user_profile.preferences and user_profile.preferences.mitra_name:
+                mitra_name = user_profile.preferences.mitra_name
+                conversation_text = f"[Speaking as {mitra_name}]\n\n{conversation_text}"
             
             # Configure Live API session
             config = {
                 "response_modalities": ["AUDIO"],
                 "speech_config": {
-                    "voice_config": {"name": voice},
+                    "voice_config": {"name": selected_voice},
                     "language_config": {"language_code": language}
                 },
                 "output_audio_transcription": {}
             }
+            
+            # Add system instruction if available
+            if system_instruction:
+                config["system_instruction"] = system_instruction
             
             # Connect to Live API and generate response
             async with self.client.aio.live.connect(
@@ -132,3 +158,80 @@ class VoiceService(BaseGeminiService):
         except Exception as e:
             logger.error(f"Error processing voice input: {e}")
             raise
+
+    def get_available_voices(self) -> List[Dict[str, str]]:
+        """
+        Get list of available voices with descriptions.
+        
+        Returns:
+            List of available voices with metadata
+        """
+        voices = [
+            {
+                "name": VoiceOption.PUCK.value,
+                "display_name": "Puck",
+                "description": "Friendly and energetic voice, good for younger users",
+                "gender": "neutral",
+                "language": "en"
+            },
+            {
+                "name": VoiceOption.CHARON.value,
+                "display_name": "Charon", 
+                "description": "Calm and reassuring voice, suitable for meditation",
+                "gender": "male",
+                "language": "en"
+            },
+            {
+                "name": VoiceOption.KORE.value,
+                "display_name": "Kore",
+                "description": "Warm and supportive voice, ideal for counseling",
+                "gender": "female", 
+                "language": "en"
+            },
+            {
+                "name": VoiceOption.FENRIR.value,
+                "display_name": "Fenrir",
+                "description": "Strong and confident voice, good for motivation",
+                "gender": "male",
+                "language": "en"
+            },
+            {
+                "name": VoiceOption.AOEDE.value,
+                "display_name": "Aoede",
+                "description": "Gentle and soothing voice, perfect for relaxation",
+                "gender": "female",
+                "language": "en"
+            }
+        ]
+        return voices
+
+    def validate_voice_preference(self, voice: str) -> bool:
+        """
+        Validate if the voice preference is supported.
+        
+        Args:
+            voice: Voice name to validate
+            
+        Returns:
+            True if voice is supported, False otherwise
+        """
+        available_voices = [v["name"] for v in self.get_available_voices()]
+        return voice in available_voices
+
+    def get_recommended_voice_for_age(self, age_group: str) -> str:
+        """
+        Get recommended voice based on age group.
+        
+        Args:
+            age_group: User's age group
+            
+        Returns:
+            Recommended voice name
+        """
+        recommendations = {
+            "teen": VoiceOption.PUCK.value,  # Energetic for teens
+            "young_adult": VoiceOption.KORE.value,  # Warm and supportive
+            "adult": VoiceOption.CHARON.value,  # Calm and professional
+            "mature_adult": VoiceOption.AOEDE.value  # Gentle and wise
+        }
+        return recommendations.get(age_group, VoiceOption.PUCK.value)

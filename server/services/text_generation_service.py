@@ -14,6 +14,7 @@ from .base_gemini_service import BaseGeminiService
 from core.config import settings
 from models.chat import ChatMessage
 from models.common import GenerationConfig, GroundingSource
+from models.user import UserProfile, ProblemCategory
 
 logger = logging.getLogger(__name__)
 
@@ -24,14 +25,18 @@ class TextGenerationService(BaseGeminiService):
     async def generate_text_response(
         self,
         messages: List[ChatMessage],
+        user_profile: Optional[UserProfile] = None,
+        problem_category: Optional[ProblemCategory] = None,
         config: Optional[GenerationConfig] = None,
         include_grounding: bool = False
     ) -> Tuple[str, Optional[List[GroundingSource]], Optional[str]]:
         """
-        Generate text response using Gemini.
+        Generate personalized text response using Gemini.
         
         Args:
             messages: Conversation history
+            user_profile: User profile for personalization
+            problem_category: Current session problem category
             config: Generation configuration
             include_grounding: Whether to use Google Search grounding
             
@@ -39,6 +44,9 @@ class TextGenerationService(BaseGeminiService):
             Tuple of (response_text, grounding_sources, thinking_text)
         """
         try:
+            # Get personalized system instruction
+            system_instruction = self.get_personalized_system_instruction(user_profile, problem_category)
+            
             # Convert messages to Gemini format
             gemini_messages = self._convert_messages_to_gemini_format(messages)
             
@@ -49,6 +57,9 @@ class TextGenerationService(BaseGeminiService):
             
             # Prepare generation config
             gen_config = self._prepare_generation_config(config)
+            
+            # Add system instruction to config
+            gen_config["system_instruction"] = system_instruction
             
             # Generate response
             response = await asyncio.to_thread(
@@ -82,6 +93,22 @@ class TextGenerationService(BaseGeminiService):
         except Exception as e:
             logger.error(f"Error generating text response: {e}")
             raise
+
+    # Backward compatibility method
+    async def generate_text_response_legacy(
+        self,
+        messages: List[ChatMessage],
+        config: Optional[GenerationConfig] = None,
+        include_grounding: bool = False
+    ) -> Tuple[str, Optional[List[GroundingSource]], Optional[str]]:
+        """Legacy method for backward compatibility."""
+        return await self.generate_text_response(
+            messages=messages,
+            user_profile=None,
+            problem_category=None,
+            config=config,
+            include_grounding=include_grounding
+        )
 
     async def generate_structured_content(
         self,

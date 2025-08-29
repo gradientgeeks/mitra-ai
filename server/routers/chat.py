@@ -15,11 +15,14 @@ from models.chat import (
     TextChatRequest, VoiceChatRequest, ChatResponse, 
     MultimodalChatRequest, SessionSummaryRequest, SessionSummaryResponse,
     ChatSession, ChatMessage, MessageRole, MessageType, MessageContent,
-    SafetyStatus, CrisisResponse, ChatMode
+    SafetyStatus, CrisisResponse, ChatMode, SessionResourcesRequest,
+    SessionResourcesResponse, ResourceType, GeneratedResource
 )
 from models.common import APIResponse, ErrorResponse, ErrorType
+from models.user import ProblemCategory, UserProfile
 from services.gemini_service import GeminiService
 from services.safety_service import SafetyService
+from services.wellness_service import WellnessService
 from repository.firestore_repository import FirestoreRepository
 
 logger = logging.getLogger(__name__)
@@ -32,6 +35,9 @@ def get_gemini_service() -> GeminiService:
 
 def get_safety_service() -> SafetyService:
     return SafetyService()
+
+def get_wellness_service() -> WellnessService:
+    return WellnessService()
 
 def get_repository() -> FirestoreRepository:
     return FirestoreRepository()
@@ -53,10 +59,14 @@ async def send_text_message(
     current_user: str = Depends(get_current_user),
     gemini_service: GeminiService = Depends(get_gemini_service),
     safety_service: SafetyService = Depends(get_safety_service),
-    repository: FirestoreRepository = Depends(get_repository)
+    repository: FirestoreRepository = Depends(get_repository),
+    wellness_service: WellnessService = Depends(get_wellness_service)
 ):
-    """Send a text message to Mitra AI."""
+    """Send a text message to Mitra AI with personalized responses."""
     try:
+        # Get user profile for personalization
+        user_profile = await repository.get_user(current_user)
+        
         # Get or create chat session
         session_id = request.session_id or str(uuid.uuid4())
         session = await repository.get_chat_session(current_user, session_id)
@@ -71,8 +81,16 @@ async def send_text_message(
                 updated_at=datetime.utcnow(),
                 messages=[],
                 is_active=True,
-                total_messages=0
+                total_messages=0,
+                problem_category=request.problem_category,
+                generated_resources=[]
             )
+        elif request.problem_category and session.problem_category != request.problem_category:
+            # Update session problem category if changed
+            session.problem_category = request.problem_category
+        
+        # Create or update session
+        if not await repository.get_chat_session(current_user, session_id):
             await repository.create_chat_session(session)
         
         # Create user message
@@ -120,12 +138,22 @@ async def send_text_message(
                 timestamp=datetime.utcnow()
             )
         
-        # Generate AI response
+        # Generate AI response with personalization
         all_messages = session.messages + [user_message]
-        response_text, grounding_sources, thinking_text = await gemini_service.generate_text_response(
-            all_messages,
-            include_grounding=request.include_grounding
-        )
+        
+        # Use personalized response generation
+        if user_profile:
+            response_text, grounding_sources, thinking_text = await gemini_service.generate_personalized_text_response(
+                all_messages,
+                user_profile=user_profile,
+                problem_category=session.problem_category,
+                include_grounding=request.include_grounding
+            )
+        else:
+            response_text, grounding_sources, thinking_text = await gemini_service.generate_text_response(
+                all_messages,
+                include_grounding=request.include_grounding
+            )
         
         # Generate image if requested
         generated_image = None
@@ -154,8 +182,13 @@ async def send_text_message(
             }
         )
         
-        # Add assistant message to session
+        # Add messages to session
+        await repository.add_message_to_session(current_user, session_id, user_message)
         await repository.add_message_to_session(current_user, session_id, assistant_message)
+        
+        # Update session message count
+        session.total_messages += 2
+        session.updated_at = datetime.utcnow()
         
         return ChatResponse(
             session_id=session_id,
@@ -492,3 +525,94 @@ async def delete_session(
     except Exception as e:
         logger.error(f"Error deleting session: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete session")
+
+
+@router.post("/session/{session_id}/resources", response_model=SessionResourcesResponse)
+async def generate_session_resources(
+    session_id: str,
+    request: SessionResourcesRequest,
+    current_user: str = Depends(get_current_user),
+    repository: FirestoreRepository = Depends(get_repository),
+    wellness_service: WellnessService = Depends(get_wellness_service)
+):
+    """Generate helpful resources based on chat session content."""
+    try:
+        # Get user profile for personalization
+        user_profile = await repository.get_user(current_user)
+        if not user_profile:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get chat session
+        session = await repository.get_chat_session(current_user, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        if not session.problem_category:
+            raise HTTPException(status_code=400, detail="No problem category set for session")
+        
+        # Generate session context from recent messages
+        recent_messages = session.messages[-10:] if session.messages else []
+        session_context = " ".join([
+            msg.content.text for msg in recent_messages 
+            if msg.content.text and msg.role == MessageRole.USER
+        ])
+        
+        # Generate resources
+        resources = await wellness_service.generate_session_resources(
+            problem_category=session.problem_category,
+            user_profile=user_profile,
+            session_context=session_context,
+            resource_types=request.resource_types or None
+        )
+        
+        # Update session with generated resources
+        session.generated_resources.extend([resource.model_dump() for resource in resources])
+        
+        return SessionResourcesResponse(
+            session_id=session_id,
+            resources=resources,
+            problem_category=session.problem_category,
+            generated_at=datetime.utcnow()
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating session resources: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate resources")
+
+
+@router.get("/categories")
+async def get_problem_categories():
+    """Get available problem categories for chat sessions."""
+    try:
+        categories = [
+            {
+                "value": category.value,
+                "label": category.value.replace("_", " ").title(),
+                "description": {
+                    "stress_anxiety": "Dealing with stress, worry, or anxious thoughts",
+                    "depression_sadness": "Feeling down, hopeless, or experiencing sadness",
+                    "relationship_issues": "Problems with friends, family, or romantic relationships",
+                    "academic_pressure": "School, college, or exam-related stress and pressure",
+                    "career_confusion": "Uncertainty about career choices or job-related stress",
+                    "family_problems": "Issues with family dynamics or expectations",
+                    "social_anxiety": "Difficulty in social situations or meeting new people",
+                    "self_esteem": "Low confidence or negative self-image",
+                    "sleep_issues": "Trouble sleeping or sleep-related problems",
+                    "anger_management": "Difficulty controlling anger or frustration",
+                    "addiction_habits": "Struggling with harmful habits or addictive behaviors",
+                    "grief_loss": "Coping with loss or grief",
+                    "identity_crisis": "Questions about identity, purpose, or life direction",
+                    "loneliness": "Feeling isolated or disconnected from others",
+                    "general_wellness": "Overall mental health and wellness support"
+                }.get(category.value, "General support and guidance")
+            }
+            for category in ProblemCategory
+        ]
+        
+        return {"categories": categories}
+        
+    except Exception as e:
+        logger.error(f"Error getting problem categories: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get problem categories")
