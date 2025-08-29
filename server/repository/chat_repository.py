@@ -158,3 +158,26 @@ class ChatRepository(BaseRepository):
         except Exception as e:
             logger.error(f"Error deleting chat session: {e}")
             return False
+
+    def _handle_timestamp_conversion(self, data: Dict[str, Any], fields: list) -> Dict[str, Any]:
+        """Handle datetime conversion for Firestore storage/retrieval."""
+        converted_data = data.copy()
+
+        for field in fields:
+            if field in converted_data:
+                timestamp = converted_data[field]
+                if isinstance(timestamp, str):
+                    try:
+                        converted_data[field] = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                    except ValueError:
+                        converted_data[field] = datetime.fromisoformat(timestamp)
+                elif hasattr(timestamp, 'to_datetime'):  # Firestore timestamp
+                    converted_data[field] = timestamp.to_datetime()
+                elif hasattr(timestamp, 'timestamp'):  # Firestore DatetimeWithNanoseconds
+                    converted_data[field] = timestamp.timestamp()
+                elif hasattr(timestamp, 'seconds'):  # Firestore Timestamp
+                    import datetime as dt
+                    converted_data[field] = dt.datetime.fromtimestamp(timestamp.seconds)
+
+        return converted_data
+

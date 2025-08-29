@@ -50,6 +50,9 @@ dependencies:
   http: ^1.1.2
   dio: ^5.4.0
 
+  # Image Loading
+  cached_network_image: ^3.3.1
+
   # Audio (for future voice features)
   flutter_sound: ^9.2.13
 

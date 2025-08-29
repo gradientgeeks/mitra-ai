@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
+import '../providers/chat_provider.dart';
 import '../models/user_model.dart';
+import '../widgets/profile_avatar.dart';
 import 'login_screen.dart';
 import 'chat_screen.dart';
 import 'talk_screen.dart';
-
-// Provider for selected problem category
-final selectedProblemCategoryProvider = StateProvider<ProblemCategory?>((ref) => null);
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -30,7 +29,7 @@ class HomeScreen extends ConsumerWidget {
   }
 
   Widget _buildHomeContent(BuildContext context, WidgetRef ref, UserModel? user) {
-    final selectedCategory = ref.watch(selectedProblemCategoryProvider);
+    final selectedCategory = ref.watch(currentProblemCategoryProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
@@ -99,22 +98,35 @@ class HomeScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Text(
-                      'Welcome to your safe space',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
+                    // Mitra Avatar
+                    MitraProfileAvatar(
+                      imageUrl: user?.preferences.mitraProfileImageUrl,
+                      mitraName: user?.preferences.mitraName ?? 'Mitra',
+                      size: 60,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'You\'re signed in anonymously. Your privacy is protected.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.white.withOpacity(0.9),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hi there! I\'m ${user?.preferences.mitraName ?? 'Mitra'}',
+                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Your AI companion for mental wellness. How are you feeling today?',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Colors.white.withOpacity(0.9),
+                                ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -127,43 +139,49 @@ class HomeScreen extends ConsumerWidget {
 
               const SizedBox(height: 30),
 
-              // Chat and Call Cards
-              if (user != null) _buildMitraInteractionCards(context, ref, user, selectedCategory),
+              // Chat and Call Cards - Show only when category is selected
+              if (selectedCategory != null && user != null)
+                _buildMitraInteractionCards(context, ref, user, selectedCategory),
+
+              // Instruction when no category selected
+              if (selectedCategory == null)
+                _buildSelectionPrompt(context),
 
               const SizedBox(height: 30),
 
               // Account Linking Reminder
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF3498DB).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: const Color(0xFF3498DB).withOpacity(0.3),
-                    width: 1,
+              if (user?.isAnonymous == true)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3498DB).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF3498DB).withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.link,
+                        color: const Color(0xFF3498DB),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Link your account in Settings to secure your data',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: const Color(0xFF3498DB),
+                                fontWeight: FontWeight.w500,
+                              ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.link,
-                      color: const Color(0xFF3498DB),
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Link your account in Settings to secure your data',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: const Color(0xFF3498DB),
-                              fontWeight: FontWeight.w500,
-                            ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
         ),
@@ -208,7 +226,7 @@ class HomeScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'Select what\'s on your mind to get personalized support',
+            'Select what\'s on your mind to get personalized support from ${ref.watch(authControllerProvider).value?.backendUser?.preferences.mitraName ?? 'Mitra'}',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: const Color(0xFF7F8C8D),
                 ),
@@ -221,40 +239,139 @@ class HomeScreen extends ConsumerWidget {
               final isSelected = selectedCategory == category;
               return GestureDetector(
                 onTap: () {
-                  ref.read(selectedProblemCategoryProvider.notifier).state =
+                  ref.read(currentProblemCategoryProvider.notifier).state =
                       isSelected ? null : category;
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
                     color: isSelected
                         ? const Color(0xFF3498DB)
                         : const Color(0xFFF8F9FA),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(25),
                     border: Border.all(
                       color: isSelected
                           ? const Color(0xFF3498DB)
                           : const Color(0xFFE0E0E0),
                       width: 1,
                     ),
+                    boxShadow: isSelected ? [
+                      BoxShadow(
+                        color: const Color(0xFF3498DB).withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ] : [],
                   ),
-                  child: Text(
-                    _getProblemCategoryDisplayName(category),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: isSelected ? Colors.white : const Color(0xFF7F8C8D),
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isSelected)
+                        Container(
+                          width: 16,
+                          height: 16,
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.check,
+                            size: 12,
+                            color: Color(0xFF3498DB),
+                          ),
                         ),
+                      Text(
+                        getProblemCategoryDisplayName(category),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: isSelected ? Colors.white : const Color(0xFF7F8C8D),
+                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                      ),
+                    ],
                   ),
                 ),
               );
             }).toList(),
+          ),
+          if (selectedCategory != null) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF27AE60).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFF27AE60).withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.lightbulb_outline,
+                    size: 20,
+                    color: const Color(0xFF27AE60),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      getProblemCategoryDescription(selectedCategory),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF27AE60),
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectionPrompt(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFE0E0E0),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.arrow_upward,
+            size: 32,
+            color: const Color(0xFF7F8C8D),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Please select how you\'re feeling',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: const Color(0xFF2C3E50),
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Choose from the options above to start your conversation with Mitra',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF7F8C8D),
+                ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMitraInteractionCards(BuildContext context, WidgetRef ref, UserModel user, ProblemCategory? selectedCategory) {
+  Widget _buildMitraInteractionCards(BuildContext context, WidgetRef ref, UserModel user, ProblemCategory selectedCategory) {
     return Column(
       children: [
         Row(
@@ -266,9 +383,8 @@ class HomeScreen extends ConsumerWidget {
                 title: 'Chat with ${user.preferences.mitraName}',
                 subtitle: 'Text Conversation',
                 icon: Icons.chat_bubble_outline,
-                activeIcon: Icons.chat_bubble,
                 color: const Color(0xFF3498DB),
-                onTap: () => _navigateToChat(context, selectedCategory),
+                onTap: () => _navigateToChat(context, ref, selectedCategory),
                 user: user,
                 ref: ref,
               ),
@@ -278,12 +394,11 @@ class HomeScreen extends ConsumerWidget {
             Expanded(
               child: _buildInteractionCard(
                 context: context,
-                title: 'Call ${user.preferences.mitraName}',
+                title: 'Talk to ${user.preferences.mitraName}',
                 subtitle: 'Voice Conversation',
                 icon: Icons.phone_outlined,
-                activeIcon: Icons.phone,
                 color: const Color(0xFF27AE60),
-                onTap: () => _navigateToCall(context, selectedCategory),
+                onTap: () => _navigateToCall(context, ref, selectedCategory),
                 user: user,
                 ref: ref,
               ),
@@ -291,38 +406,37 @@ class HomeScreen extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 16),
-        if (selectedCategory != null)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF27AE60).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: const Color(0xFF27AE60).withOpacity(0.3),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline,
-                  color: const Color(0xFF27AE60),
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Your conversation will be personalized for ${_getProblemCategoryDisplayName(selectedCategory)}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF27AE60),
-                          fontWeight: FontWeight.w500,
-                        ),
-                  ),
-                ),
-              ],
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF9B59B6).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: const Color(0xFF9B59B6).withOpacity(0.3),
+              width: 1,
             ),
           ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.auto_awesome,
+                color: const Color(0xFF9B59B6),
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Your conversation will be personalized for ${getProblemCategoryDisplayName(selectedCategory)}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF9B59B6),
+                        fontWeight: FontWeight.w500,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -332,7 +446,6 @@ class HomeScreen extends ConsumerWidget {
     required String title,
     required String subtitle,
     required IconData icon,
-    required IconData activeIcon,
     required Color color,
     required VoidCallback onTap,
     required UserModel user,
@@ -347,20 +460,31 @@ class HomeScreen extends ConsumerWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08),
+              color: color.withOpacity(0.15),
               blurRadius: 20,
               offset: const Offset(0, 4),
             ),
           ],
+          border: Border.all(
+            color: color.withOpacity(0.2),
+            width: 1,
+          ),
         ),
         child: Column(
           children: [
-            Icon(
-              icon,
-              size: 32,
-              color: color,
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 32,
+                color: color,
+              ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Text(
               title,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -377,100 +501,49 @@ class HomeScreen extends ConsumerWidget {
                   ),
               textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'Start Now',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  void _navigateToChat(BuildContext context, ProblemCategory? category) {
+  void _navigateToChat(BuildContext context, WidgetRef ref, ProblemCategory category) {
+    // Initialize chat session with selected problem category
+    ref.read(chatControllerProvider.notifier).startChatSession(
+      problemCategory: category,
+    );
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => const ChatScreen(),
-        settings: RouteSettings(
-          arguments: {'problemCategory': category},
-        ),
       ),
     );
   }
 
-  void _navigateToCall(BuildContext context, ProblemCategory? category) {
+  void _navigateToCall(BuildContext context, WidgetRef ref, ProblemCategory category) {
+    // Initialize chat session for voice mode with selected problem category
+    ref.read(chatControllerProvider.notifier).startChatSession(
+      problemCategory: category,
+    );
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => const TalkScreen(),
-        settings: RouteSettings(
-          arguments: {'problemCategory': category},
-        ),
-      ),
-    );
-  }
-
-  String _getProblemCategoryDisplayName(ProblemCategory category) {
-    switch (category) {
-      case ProblemCategory.stress_anxiety:
-        return 'Stress & Anxiety';
-      case ProblemCategory.depression_sadness:
-        return 'Depression & Sadness';
-      case ProblemCategory.relationship_issues:
-        return 'Relationships';
-      case ProblemCategory.academic_pressure:
-        return 'Academic Pressure';
-      case ProblemCategory.career_confusion:
-        return 'Career Confusion';
-      case ProblemCategory.family_problems:
-        return 'Family Issues';
-      case ProblemCategory.social_anxiety:
-        return 'Social Anxiety';
-      case ProblemCategory.self_esteem:
-        return 'Self-Esteem';
-      case ProblemCategory.sleep_issues:
-        return 'Sleep Issues';
-      case ProblemCategory.anger_management:
-        return 'Anger Management';
-      case ProblemCategory.addiction_habits:
-        return 'Addiction & Habits';
-      case ProblemCategory.grief_loss:
-        return 'Grief & Loss';
-      case ProblemCategory.identity_crisis:
-        return 'Identity Crisis';
-      case ProblemCategory.loneliness:
-        return 'Loneliness';
-      case ProblemCategory.general_wellness:
-        return 'General Wellness';
-    }
-  }
-
-  Widget _buildStatCard(
-    BuildContext context,
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: color,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Text(
-            title,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: color,
-            ),
-          ),
-        ],
       ),
     );
   }

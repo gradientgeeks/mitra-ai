@@ -16,11 +16,61 @@ from models.user import (
 from models.common import APIResponse, ErrorResponse, ErrorType
 from services.firebase_service import FirebaseService
 from services.voice_service import VoiceService
+from services.image_service import ImageService
 from repository.firestore_repository import FirestoreRepository
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Predefined Mitra companions with their characteristics
+PREDEFINED_MITRA_COMPANIONS = {
+    "Mitra": {
+        "gender": "feminine",
+        "description": "A wise and nurturing AI companion with gentle eyes and a warm smile",
+        "style": "traditional Indian wisdom meets modern compassion"
+    },
+    "Sakhi": {
+        "gender": "feminine", 
+        "description": "A caring friend with a bright, encouraging presence and youthful energy",
+        "style": "vibrant and friendly with traditional Indian elements"
+    },
+    "Suhana": {
+        "gender": "feminine",
+        "description": "An elegant and graceful companion with serene features and calming aura",
+        "style": "sophisticated and peaceful with soft, flowing elements"
+    },
+    "Priya": {
+        "gender": "feminine",
+        "description": "A loving and empathetic companion with kind eyes and gentle demeanor",
+        "style": "warm and approachable with soft pastels"
+    },
+    "Ishita": {
+        "gender": "feminine", 
+        "description": "A creative and inspiring companion with artistic flair and imaginative spirit",
+        "style": "artistic and colorful with creative elements"
+    },
+    "Aryan": {
+        "gender": "masculine",
+        "description": "A strong and supportive companion with confident bearing and trustworthy presence",
+        "style": "modern and reliable with clean, professional look"
+    },
+    "Kiran": {
+        "gender": "masculine",
+        "description": "A bright and optimistic companion with energetic presence and encouraging smile",
+        "style": "youthful and dynamic with bright, positive colors"
+    },
+    "Rahul": {
+        "gender": "masculine",
+        "description": "A mature and understanding companion with wise eyes and patient demeanor",
+        "style": "sophisticated and calm with mature, grounded appearance"
+    },
+    "Dev": {
+        "gender": "masculine",
+        "description": "A tech-savvy and progressive companion with modern outlook and innovative spirit",
+        "style": "contemporary and sleek with futuristic elements"
+    }
+}
 
 # Dependency injection
 def get_firebase_service() -> FirebaseService:
@@ -31,6 +81,9 @@ def get_repository() -> FirestoreRepository:
 
 def get_voice_service() -> VoiceService:
     return VoiceService()
+
+def get_image_service() -> ImageService:
+    return ImageService()
 
 async def get_current_user_optional(authorization: str = Header(None)) -> Optional[str]:
     """Extract user ID from authorization header (optional)."""
@@ -146,7 +199,8 @@ async def complete_user_onboarding(
     request: OnboardingRequest,
     current_user: str = Depends(get_current_user),
     repository: FirestoreRepository = Depends(get_repository),
-    voice_service: VoiceService = Depends(get_voice_service)
+    voice_service: VoiceService = Depends(get_voice_service),
+    image_service: ImageService = Depends(get_image_service)
 ):
     """Complete user onboarding with personalization."""
     try:
@@ -162,7 +216,43 @@ async def complete_user_onboarding(
         if not voice_service.validate_voice_preference(request.preferred_voice.value):
             raise HTTPException(status_code=400, detail="Invalid voice preference")
         
-        # Update user preferences with onboarding data
+        # Generate Mitra profile image (only for predefined companions)
+        profile_image_url = None
+        try:
+            # Check if this is a predefined Mitra companion
+            if request.mitra_name in PREDEFINED_MITRA_COMPANIONS:
+                logger.info(f"Checking for existing profile image for predefined Mitra: {request.mitra_name}")
+                
+                # Try to get existing image URL from Firebase Storage first
+                profile_image_url = await _get_existing_mitra_image_url(request.mitra_name)
+                
+                if not profile_image_url:
+                    # Generate new image for predefined companion
+                    logger.info(f"Generating new profile image for predefined Mitra: {request.mitra_name}")
+                    
+                    companion_info = PREDEFINED_MITRA_COMPANIONS[request.mitra_name]
+                    
+                    prompt = f"""A {companion_info['description']}, {companion_info['style']}, 
+                    digital art portrait, soft lighting, peaceful expression, culturally appropriate for Indian youth, 
+                    professional quality for mental wellness app, clean background, warm and trustworthy appearance"""
+                    
+                    # Generate the image
+                    image_data = await image_service.generate_image(prompt, "ai_companion_portrait")
+                    
+                    if image_data:
+                        # Save to Firebase Storage
+                        profile_image_url = await _save_mitra_image_to_storage(request.mitra_name, image_data)
+                        logger.info(f"Successfully generated and saved profile image for {request.mitra_name}")
+                else:
+                    logger.info(f"Using existing profile image for {request.mitra_name}")
+            else:
+                logger.info(f"Custom Mitra name '{request.mitra_name}' - skipping image generation")
+                
+        except Exception as e:
+            logger.warning(f"Failed to generate/retrieve profile image for {request.mitra_name}: {e}")
+            # Continue without profile image - it's not critical for onboarding
+
+        # Update preferences with profile image URL if available
         updated_preferences = UserPreferences(
             language=request.language,
             notification_enabled=request.notification_enabled,
@@ -174,15 +264,17 @@ async def complete_user_onboarding(
             mitra_name=request.mitra_name,
             mitra_gender=request.mitra_gender,
             age_group=request.age_group,
+            mitra_profile_image_url=profile_image_url,
             onboarding_completed=True
         )
         
-        # Update user profile
+        # Update user profile with profile image URL
         update_data = {
             "preferences": updated_preferences.model_dump(),
             "age_group": request.age_group.value,
             "birth_year": request.birth_year,
             "onboarding_completed": True,
+            "mitra_profile_image_url": profile_image_url,
             "updated_at": datetime.utcnow()
         }
         
@@ -207,7 +299,8 @@ async def complete_user_onboarding(
             last_mood_entry=updated_profile.last_mood_entry,
             age_group=updated_profile.age_group,
             birth_year=updated_profile.birth_year,
-            onboarding_completed=updated_profile.onboarding_completed
+            onboarding_completed=updated_profile.onboarding_completed,
+            mitra_profile_image_url=profile_image_url
         )
         
     except HTTPException:
@@ -545,3 +638,184 @@ async def get_user_stats(
     except Exception as e:
         logger.error(f"Error getting user stats: {e}")
         raise HTTPException(status_code=500, detail="Failed to get user stats")
+
+
+@router.post("/admin/generate-mitra-images")
+async def generate_predefined_mitra_images(
+    image_service: ImageService = Depends(get_image_service)
+):
+    """
+    Admin endpoint to pre-generate profile images for all predefined Mitra companions.
+    This should be called during system setup to populate the image library.
+    """
+    try:
+        results = {}
+        
+        for mitra_name, companion_info in PREDEFINED_MITRA_COMPANIONS.items():
+            try:
+                logger.info(f"Generating profile image for predefined Mitra: {mitra_name}")
+                
+                # Check if image already exists
+                existing_url = await _get_existing_mitra_image_url(mitra_name)
+                if existing_url:
+                    results[mitra_name] = {
+                        "status": "existing",
+                        "url": existing_url,
+                        "message": "Image already exists"
+                    }
+                    continue
+                
+                # Generate new image
+                prompt = f"""A {companion_info['description']}, {companion_info['style']}, 
+                digital art portrait, soft lighting, peaceful expression, culturally appropriate for Indian youth, 
+                professional quality for mental wellness app, clean background, warm and trustworthy appearance"""
+                
+                image_data = await image_service.generate_image(prompt, "ai_companion_portrait")
+                
+                if image_data:
+                    # Save to storage
+                    image_url = await _save_mitra_image_to_storage(mitra_name, image_data)
+                    
+                    results[mitra_name] = {
+                        "status": "generated",
+                        "url": image_url,
+                        "message": f"Successfully generated image ({len(image_data)} bytes)"
+                    }
+                else:
+                    results[mitra_name] = {
+                        "status": "failed",
+                        "url": None,
+                        "message": "Image generation failed"
+                    }
+                    
+            except Exception as e:
+                logger.error(f"Error generating image for {mitra_name}: {e}")
+                results[mitra_name] = {
+                    "status": "error",
+                    "url": None,
+                    "message": f"Error: {str(e)}"
+                }
+        
+        return {
+            "message": "Mitra image generation completed",
+            "results": results,
+            "total_processed": len(PREDEFINED_MITRA_COMPANIONS),
+            "successful": len([r for r in results.values() if r["status"] in ["generated", "existing"]])
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in batch Mitra image generation: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate Mitra images")
+
+
+@router.get("/admin/mitra-images")
+async def list_mitra_images():
+    """
+    Admin endpoint to list all existing Mitra profile images in Firebase Storage.
+    """
+    try:
+        firebase_service = FirebaseService()
+        
+        # List all files in the mitra_profiles directory
+        file_paths = await firebase_service.list_files_in_directory("mitra_profiles")
+        
+        images_info = []
+        for file_path in file_paths:
+            # Extract Mitra name from file path
+            file_name = file_path.split("/")[-1]  # Get filename
+            mitra_name = file_name.replace(".jpg", "").replace(".jpeg", "").replace(".png", "").title()
+            
+            # Get public URL
+            public_url = await firebase_service.get_file_public_url(file_path)
+            
+            images_info.append({
+                "mitra_name": mitra_name,
+                "file_path": file_path,
+                "public_url": public_url,
+                "is_predefined": mitra_name in PREDEFINED_MITRA_COMPANIONS
+            })
+        
+        return {
+            "message": "Mitra images retrieved successfully",
+            "total_images": len(images_info),
+            "images": images_info,
+            "predefined_companions": list(PREDEFINED_MITRA_COMPANIONS.keys())
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing Mitra images: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list Mitra images")
+
+
+# Helper functions for Mitra profile image management
+
+async def _get_existing_mitra_image_url(mitra_name: str) -> Optional[str]:
+    """
+    Check if a profile image already exists for a predefined Mitra companion.
+    
+    Args:
+        mitra_name: Name of the predefined Mitra companion
+        
+    Returns:
+        URL of existing image or None if not found
+    """
+    try:
+        firebase_service = FirebaseService()
+        file_path = f"mitra_profiles/{mitra_name.lower()}.jpg"
+        
+        # Check if file exists and get public URL
+        public_url = await firebase_service.get_file_public_url(file_path)
+        
+        if public_url:
+            logger.info(f"Found existing image for {mitra_name}: {public_url}")
+            return public_url
+        else:
+            logger.debug(f"No existing image found for {mitra_name}")
+            return None
+        
+    except Exception as e:
+        logger.error(f"Error checking for existing Mitra image {mitra_name}: {e}")
+        return None
+
+
+async def _save_mitra_image_to_storage(mitra_name: str, image_data: bytes) -> Optional[str]:
+    """
+    Save a generated Mitra profile image to Firebase Storage.
+    
+    Args:
+        mitra_name: Name of the predefined Mitra companion
+        image_data: Generated image data as bytes
+        
+    Returns:
+        URL of saved image or None if failed
+    """
+    try:
+        firebase_service = FirebaseService()
+        file_path = f"mitra_profiles/{mitra_name.lower()}.jpg"
+        
+        # Prepare metadata
+        metadata = {
+            "mitra_name": mitra_name,
+            "generated_at": datetime.utcnow().isoformat(),
+            "content_type": "image/jpeg",
+            "purpose": "ai_companion_profile"
+        }
+        
+        # Upload to Firebase Storage
+        public_url = await firebase_service.upload_file_to_storage(
+            file_data=image_data,
+            file_path=file_path,
+            content_type="image/jpeg",
+            metadata=metadata
+        )
+        
+        if public_url:
+            logger.info(f"Successfully saved profile image for {mitra_name} ({len(image_data)} bytes): {public_url}")
+            return public_url
+        else:
+            logger.error(f"Failed to save profile image for {mitra_name}")
+            return None
+        
+    except Exception as e:
+        logger.error(f"Error saving Mitra image {mitra_name}: {e}")
+        return None

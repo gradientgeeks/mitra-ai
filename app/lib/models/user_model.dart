@@ -63,6 +63,7 @@ class UserPreferences {
   final String mitraName;
   final Gender mitraGender;
   final AgeGroup? ageGroup;
+  final String? mitraProfileImageUrl;
   final bool onboardingCompleted;
 
   const UserPreferences({
@@ -76,6 +77,7 @@ class UserPreferences {
     this.mitraName = 'Mitra',
     this.mitraGender = Gender.female,
     this.ageGroup,
+    this.mitraProfileImageUrl,
     this.onboardingCompleted = false,
   });
 
@@ -102,6 +104,7 @@ class UserPreferences {
             orElse: () => AgeGroup.adult,
           )
         : null,
+      mitraProfileImageUrl: json['mitra_profile_image_url'] as String?,
       onboardingCompleted: json['onboarding_completed'] as bool? ?? false,
     );
   }
@@ -118,6 +121,7 @@ class UserPreferences {
       'mitra_name': mitraName,
       'mitra_gender': mitraGender.name.toLowerCase(),
       'age_group': ageGroup?.name.toLowerCase(),
+      'mitra_profile_image_url': mitraProfileImageUrl,
       'onboarding_completed': onboardingCompleted,
     };
   }
@@ -133,6 +137,7 @@ class UserPreferences {
     String? mitraName,
     Gender? mitraGender,
     AgeGroup? ageGroup,
+    String? mitraProfileImageUrl,
     bool? onboardingCompleted,
   }) {
     return UserPreferences(
@@ -146,6 +151,7 @@ class UserPreferences {
       mitraName: mitraName ?? this.mitraName,
       mitraGender: mitraGender ?? this.mitraGender,
       ageGroup: ageGroup ?? this.ageGroup,
+      mitraProfileImageUrl: mitraProfileImageUrl ?? this.mitraProfileImageUrl,
       onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
     );
   }

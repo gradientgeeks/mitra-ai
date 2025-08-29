@@ -58,16 +58,13 @@ class TextGenerationService(BaseGeminiService):
             # Prepare generation config
             gen_config = self._prepare_generation_config(config)
             
-            # Add system instruction to config
-            gen_config["system_instruction"] = system_instruction
-            
             # Generate response
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
                 model=settings.gemini_text_model,
                 contents=gemini_messages,
                 config=types.GenerateContentConfig(
-                    system_instruction=self.system_instruction,
+                    system_instruction=system_instruction,
                     tools=tools if tools else None,
                     **gen_config
                 )
@@ -126,12 +123,15 @@ class TextGenerationService(BaseGeminiService):
             Structured content matching schema
         """
         try:
+            # Get base system instruction for structured content
+            system_instruction = self.get_personalized_system_instruction()
+
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
                 model=settings.gemini_text_model,
                 contents=[prompt],
                 config=types.GenerateContentConfig(
-                    system_instruction=self.system_instruction,
+                    system_instruction=system_instruction,
                     response_schema=schema
                 )
             )

@@ -79,6 +79,7 @@ class UserPreferences(BaseModel):
     mitra_name: str = "Mitra"
     mitra_gender: Gender = Gender.FEMALE
     age_group: Optional[AgeGroup] = None
+    mitra_profile_image_url: Optional[str] = None
     onboarding_completed: bool = False
 
 

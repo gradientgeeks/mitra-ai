@@ -27,6 +27,7 @@ class Settings(BaseModel):
     # Firebase Configuration
     firebase_credentials_path: Optional[str] = None
     firebase_project_id: Optional[str] = None
+    firebase_storage_bucket: Optional[str] = None
     
     # Security
     allowed_origins: list[str] = [
@@ -95,6 +96,7 @@ class Settings(BaseModel):
         self.google_cloud_project = os.getenv("GOOGLE_CLOUD_PROJECT")
         self.firebase_credentials_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
         self.firebase_project_id = os.getenv("FIREBASE_PROJECT_ID")
+        self.firebase_storage_bucket = os.getenv("FIREBASE_STORAGE_BUCKET")
         self.debug = os.getenv("DEBUG", "false").lower() == "true"
         self.environment = os.getenv("ENVIRONMENT", "development")
         

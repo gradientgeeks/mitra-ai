@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
+import '../models/chat_models.dart';
 
 class ApiService {
   static const String baseUrl = 'http://localhost:8000/api/v1'; // Update this with your backend URL
@@ -304,7 +305,7 @@ class ApiService {
       } else {
         throw ApiException(
           statusCode: response.statusCode,
-          message: 'Failed to generate profile image: ${response.body}',
+          message: 'Failed to generate image',
         );
       }
     } catch (e) {
@@ -312,19 +313,162 @@ class ApiService {
     }
   }
 
-  // Update user profile image URL
-  Future<UserModel> updateProfileImageUrl(String imageUrl) async {
-    try {
-      final requestBody = {'mitra_profile_image_url': imageUrl};
+  // ================= CHAT & VOICE SESSION METHODS =================
 
-      final response = await _client.put(
-        Uri.parse('$baseUrl/user/profile-image'),
+  // Send text message to chat
+  Future<ChatResponse> sendTextMessage({
+    required String message,
+    String? sessionId,
+    ProblemCategory? problemCategory,
+    bool includeGrounding = false,
+    bool generateImage = false,
+  }) async {
+    try {
+      final requestBody = {
+        'message': message,
+        if (sessionId != null) 'session_id': sessionId,
+        if (problemCategory != null) 'problem_category': _mapProblemCategoryToBackend(problemCategory),
+        'include_grounding': includeGrounding,
+        'generate_image': generateImage,
+      };
+
+      final response = await _client.post(
+        Uri.parse('$baseUrl/chat/text'),
         headers: _headers,
         body: json.encode(requestBody),
       );
 
       final data = _handleResponse(response);
-      return UserModel.fromJson(data);
+      return ChatResponse.fromJson(data);
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Send voice message to chat
+  Future<ChatResponse> sendVoiceMessage({
+    required List<int> audioData,
+    String? sessionId,
+    ProblemCategory? problemCategory,
+    String responseFormat = 'audio',
+  }) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/chat/voice'));
+      request.headers.addAll(_headers);
+
+      // Add audio file
+      request.files.add(http.MultipartFile.fromBytes(
+        'audio_file',
+        audioData,
+        filename: 'audio.wav',
+      ));
+
+      // Add other fields
+      if (sessionId != null) request.fields['session_id'] = sessionId;
+      if (problemCategory != null) request.fields['problem_category'] = _mapProblemCategoryToBackend(problemCategory);
+      request.fields['response_format'] = responseFormat;
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      final data = _handleResponse(response);
+      return ChatResponse.fromJson(data);
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Get chat session summary
+  Future<ChatSessionSummary> getChatSessionSummary({
+    required String sessionId,
+    bool includeMessages = false,
+    int limit = 50,
+  }) async {
+    try {
+      final queryParams = {
+        'include_messages': includeMessages.toString(),
+        'limit': limit.toString(),
+      };
+
+      final uri = Uri.parse('$baseUrl/chat/session/$sessionId').replace(
+        queryParameters: queryParams,
+      );
+
+      final response = await _client.get(uri, headers: _headers);
+      final data = _handleResponse(response);
+      return ChatSessionSummary.fromJson(data);
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Get user's chat sessions
+  Future<List<ChatSessionSummary>> getUserChatSessions({int limit = 10}) async {
+    try {
+      final queryParams = {'limit': limit.toString()};
+      final uri = Uri.parse('$baseUrl/chat/sessions').replace(
+        queryParameters: queryParams,
+      );
+
+      final response = await _client.get(uri, headers: _headers);
+      final data = _handleResponse(response);
+
+      return (data as List).map((item) => ChatSessionSummary.fromJson(item)).toList();
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Delete chat session
+  Future<void> deleteChatSession(String sessionId) async {
+    try {
+      await _client.delete(
+        Uri.parse('$baseUrl/chat/session/$sessionId'),
+        headers: _headers,
+      );
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Generate session resources
+  Future<SessionResourcesResponse> generateSessionResources({
+    required String sessionId,
+    List<String>? resourceTypes,
+    int maxResources = 3,
+  }) async {
+    try {
+      final requestBody = {
+        'session_id': sessionId,
+        if (resourceTypes != null) 'resource_types': resourceTypes,
+        'max_resources': maxResources,
+      };
+
+      final response = await _client.post(
+        Uri.parse('$baseUrl/chat/session/$sessionId/resources'),
+        headers: _headers,
+        body: json.encode(requestBody),
+      );
+
+      final data = _handleResponse(response);
+      return SessionResourcesResponse.fromJson(data);
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Get problem categories
+  Future<List<ProblemCategoryInfo>> getProblemCategories() async {
+    try {
+      final response = await _client.get(
+        Uri.parse('$baseUrl/chat/categories'),
+        headers: _headers,
+      );
+
+      final data = _handleResponse(response);
+      return (data['categories'] as List)
+          .map((item) => ProblemCategoryInfo.fromJson(item))
+          .toList();
     } catch (e) {
       throw _handleError(e);
     }
@@ -369,6 +513,41 @@ class ApiService {
         return 'Fenrir';
       case VoiceOption.aoede:
         return 'Aoede';
+    }
+  }
+
+  String _mapProblemCategoryToBackend(ProblemCategory category) {
+    switch (category) {
+      case ProblemCategory.stress_anxiety:
+        return 'stress_anxiety';
+      case ProblemCategory.depression_sadness:
+        return 'depression_sadness';
+      case ProblemCategory.relationship_issues:
+        return 'relationship_issues';
+      case ProblemCategory.academic_pressure:
+        return 'academic_pressure';
+      case ProblemCategory.career_confusion:
+        return 'career_confusion';
+      case ProblemCategory.family_problems:
+        return 'family_problems';
+      case ProblemCategory.social_anxiety:
+        return 'social_anxiety';
+      case ProblemCategory.self_esteem:
+        return 'self_esteem';
+      case ProblemCategory.sleep_issues:
+        return 'sleep_issues';
+      case ProblemCategory.anger_management:
+        return 'anger_management';
+      case ProblemCategory.addiction_habits:
+        return 'addiction_habits';
+      case ProblemCategory.grief_loss:
+        return 'grief_loss';
+      case ProblemCategory.identity_crisis:
+        return 'identity_crisis';
+      case ProblemCategory.loneliness:
+        return 'loneliness';
+      case ProblemCategory.general_wellness:
+        return 'general_wellness';
     }
   }
 

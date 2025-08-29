@@ -616,3 +616,41 @@ async def get_problem_categories():
     except Exception as e:
         logger.error(f"Error getting problem categories: {e}")
         raise HTTPException(status_code=500, detail="Failed to get problem categories")
+
+
+@router.post("/generate-image")
+async def generate_image(
+    request: dict,
+    current_user: str = Depends(get_current_user),
+    gemini_service: GeminiService = Depends(get_gemini_service)
+):
+    """Generate an image using AI based on the provided prompt."""
+    try:
+        prompt = request.get("prompt", "")
+        style = request.get("style", "realistic")
+        
+        if not prompt:
+            raise HTTPException(status_code=400, detail="Prompt is required")
+        
+        logger.info(f"Generating image for user {current_user} with prompt: {prompt}")
+        
+        # Generate image using Gemini service
+        image_data = await gemini_service.generate_image(prompt, style)
+        
+        if not image_data:
+            raise HTTPException(status_code=500, detail="Failed to generate image")
+        
+        # Return the image data directly as bytes
+        return Response(
+            content=image_data,
+            media_type="image/jpeg",
+            headers={
+                "Content-Disposition": "inline; filename=generated_image.jpg"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating image: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate image")

@@ -10,7 +10,7 @@ import os
 
 # Firebase Admin SDK imports
 import firebase_admin
-from firebase_admin import credentials, auth, firestore, exceptions
+from firebase_admin import credentials, auth, firestore, storage, exceptions
 
 from core.config import settings
 from models.user import UserProfile, UserProvider, UserStatus, UserPreferences
@@ -37,6 +37,7 @@ class FirebaseService:
                 cred = credentials.Certificate(settings.firebase_credentials_path)
                 firebase_admin.initialize_app(cred, {
                     'projectId': settings.firebase_project_id,
+                    'storageBucket': settings.firebase_storage_bucket or f"{settings.firebase_project_id}.firebasestorage.app"
                 })
                 logger.info(f"Firebase initialized with service account from {settings.firebase_credentials_path}")
             elif settings.firebase_project_id:
@@ -45,6 +46,7 @@ class FirebaseService:
                     cred = credentials.ApplicationDefault()
                     firebase_admin.initialize_app(cred, {
                         'projectId': settings.firebase_project_id,
+                        'storageBucket': settings.firebase_storage_bucket or f"{settings.firebase_project_id}.firebasestorage.app"
                     })
                     logger.info("Firebase initialized with application default credentials")
                 except Exception as e:
@@ -57,6 +59,7 @@ class FirebaseService:
         # Initialize Firebase services
         self.auth = auth
         self.db = firestore.client()
+        self.storage_bucket = storage.bucket()
         logger.info("Firebase services initialized successfully")
 
     def _handle_firebase_error(self, error: Exception, operation: str) -> None:
@@ -755,3 +758,150 @@ class FirebaseService:
         except Exception as e:
             logger.error(f"Unexpected error deleting user data: {e}")
             return False
+
+    # Firebase Storage methods
+
+    async def upload_file_to_storage(
+        self, 
+        file_data: bytes, 
+        file_path: str, 
+        content_type: str = "image/jpeg",
+        metadata: Optional[Dict[str, str]] = None
+    ) -> Optional[str]:
+        """
+        Upload a file to Firebase Storage.
+        
+        Args:
+            file_data: File data as bytes
+            file_path: Path in storage (e.g., "mitra_profiles/mitra.jpg")
+            content_type: MIME type of the file
+            metadata: Optional metadata dictionary
+            
+        Returns:
+            Public URL of uploaded file or None if failed
+        """
+        try:
+            # Get blob reference
+            blob = self.storage_bucket.blob(file_path)
+            
+            # Set metadata if provided
+            if metadata:
+                blob.metadata = metadata
+            
+            # Upload file
+            blob.upload_from_string(
+                file_data,
+                content_type=content_type
+            )
+            
+            # Make blob publicly readable
+            blob.make_public()
+            
+            # Return public URL
+            public_url = blob.public_url
+            logger.info(f"Successfully uploaded file to {file_path}: {public_url}")
+            return public_url
+            
+        except Exception as e:
+            logger.error(f"Error uploading file to storage {file_path}: {e}")
+            return None
+
+    async def download_file_from_storage(self, file_path: str) -> Optional[bytes]:
+        """
+        Download a file from Firebase Storage.
+        
+        Args:
+            file_path: Path in storage
+            
+        Returns:
+            File data as bytes or None if not found
+        """
+        try:
+            blob = self.storage_bucket.blob(file_path)
+            
+            if not blob.exists():
+                logger.debug(f"File does not exist in storage: {file_path}")
+                return None
+            
+            file_data = blob.download_as_bytes()
+            logger.debug(f"Successfully downloaded file from {file_path}")
+            return file_data
+            
+        except Exception as e:
+            logger.error(f"Error downloading file from storage {file_path}: {e}")
+            return None
+
+    async def delete_file_from_storage(self, file_path: str) -> bool:
+        """
+        Delete a file from Firebase Storage.
+        
+        Args:
+            file_path: Path in storage
+            
+        Returns:
+            True if deleted successfully, False otherwise
+        """
+        try:
+            blob = self.storage_bucket.blob(file_path)
+            
+            if not blob.exists():
+                logger.debug(f"File does not exist in storage: {file_path}")
+                return True  # Consider as successful deletion
+            
+            blob.delete()
+            logger.info(f"Successfully deleted file from storage: {file_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error deleting file from storage {file_path}: {e}")
+            return False
+
+    async def get_file_public_url(self, file_path: str) -> Optional[str]:
+        """
+        Get the public URL of a file in Firebase Storage.
+        
+        Args:
+            file_path: Path in storage
+            
+        Returns:
+            Public URL or None if file doesn't exist
+        """
+        try:
+            blob = self.storage_bucket.blob(file_path)
+            
+            if not blob.exists():
+                logger.debug(f"File does not exist in storage: {file_path}")
+                return None
+            
+            # Make sure it's public
+            blob.make_public()
+            return blob.public_url
+            
+        except Exception as e:
+            logger.error(f"Error getting public URL for {file_path}: {e}")
+            return None
+
+    async def list_files_in_directory(self, directory_path: str) -> List[str]:
+        """
+        List all files in a specific directory in Firebase Storage.
+        
+        Args:
+            directory_path: Directory path in storage (e.g., "mitra_profiles/")
+            
+        Returns:
+            List of file paths
+        """
+        try:
+            # Ensure directory path ends with /
+            if not directory_path.endswith("/"):
+                directory_path += "/"
+            
+            blobs = self.storage_bucket.list_blobs(prefix=directory_path)
+            file_paths = [blob.name for blob in blobs if not blob.name.endswith("/")]
+            
+            logger.debug(f"Found {len(file_paths)} files in {directory_path}")
+            return file_paths
+            
+        except Exception as e:
+            logger.error(f"Error listing files in {directory_path}: {e}")
+            return []
