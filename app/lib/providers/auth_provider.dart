@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firebase_service.dart';
+import '../services/api_service.dart';
 import '../models/user_model.dart';
 
 // Firebase service provider
@@ -20,13 +21,27 @@ final currentUserProvider = Provider<User?>((ref) {
   return authState.whenData((user) => user).value;
 });
 
-// User document provider
+// User document provider with API integration
 final userDocumentProvider = FutureProvider<UserModel?>((ref) async {
   final user = ref.watch(currentUserProvider);
   if (user == null) return null;
 
-  final firebaseService = ref.watch(firebaseServiceProvider);
-  return await firebaseService.getUserDocument(user.uid);
+  try {
+    // Get auth token
+    final token = await user.getIdToken();
+    if (token == null) return null;
+
+    // Try to get user from API first
+    try {
+      return await ApiService.getCurrentUser(token);
+    } catch (e) {
+      // Fallback to Firebase if API is not available
+      final firebaseService = ref.watch(firebaseServiceProvider);
+      return await firebaseService.getUserDocument(user.uid);
+    }
+  } catch (e) {
+    return null;
+  }
 });
 
 // Authentication controller
@@ -59,6 +74,55 @@ class AuthController extends StateNotifier<AsyncValue<User?>> {
       }
     } catch (e, stackTrace) {
       state = AsyncValue.error(e, stackTrace);
+    }
+  }
+
+  Future<void> completeOnboarding(OnboardingRequest request) async {
+    final user = state.value;
+    if (user == null) {
+      throw Exception('No authenticated user found');
+    }
+
+    try {
+      // Get auth token
+      final token = await user.getIdToken();
+      if (token == null) {
+        throw Exception('Failed to get authentication token');
+      }
+
+      // Complete onboarding via API
+      await ApiService.completeOnboarding(
+        authToken: token,
+        request: request,
+      );
+
+      // Refresh user data after onboarding
+      // This will trigger a rebuild of any widgets watching userDocumentProvider
+    } catch (e) {
+      throw Exception('Failed to complete onboarding: $e');
+    }
+  }
+
+  Future<void> updateUserPreferences(UserPreferences preferences) async {
+    final user = state.value;
+    if (user == null) {
+      throw Exception('No authenticated user found');
+    }
+
+    try {
+      // Get auth token
+      final token = await user.getIdToken();
+      if (token == null) {
+        throw Exception('Failed to get authentication token');
+      }
+
+      // Update preferences via API
+      await ApiService.updateUserPreferences(
+        authToken: token,
+        preferences: preferences,
+      );
+    } catch (e) {
+      throw Exception('Failed to update preferences: $e');
     }
   }
 

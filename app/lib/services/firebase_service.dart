@@ -1,5 +1,4 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 
@@ -20,59 +19,9 @@ class FirebaseService {
   // Anonymous sign in
   Future<UserCredential?> signInAnonymously() async {
     try {
-      final UserCredential result = await _auth.signInAnonymously();
-      await _createUserDocument(result.user!);
-      return result;
+      return await _auth.signInAnonymously();
     } catch (e) {
       print('Error signing in anonymously: $e');
-      return null;
-    }
-  }
-
-  // Create user document in Firestore
-  Future<void> _createUserDocument(User user) async {
-    try {
-      final userDoc = _firestore.collection('users').doc(user.uid);
-      final docSnapshot = await userDoc.get();
-      
-      if (!docSnapshot.exists) {
-        final now = DateTime.now();
-        final userModel = UserModel(
-          uid: user.uid,
-          provider: user.isAnonymous ? 'anonymous' : 'other',
-          email: user.email,
-          displayName: user.displayName,
-          isAnonymous: user.isAnonymous,
-          status: 'active',
-          createdAt: now,
-          lastLogin: now,
-          preferences: const UserPreferences(),
-          totalSessions: 1,
-        );
-
-        await userDoc.set(userModel.toJson());
-      } else {
-        // Update last login
-        await userDoc.update({
-          'lastLogin': DateTime.now().toIso8601String(),
-          'totalSessions': FieldValue.increment(1),
-        });
-      }
-    } catch (e) {
-      print('Error creating user document: $e');
-    }
-  }
-
-  // Get user document
-  Future<UserModel?> getUserDocument(String uid) async {
-    try {
-      final doc = await _firestore.collection('users').doc(uid).get();
-      if (doc.exists) {
-        return UserModel.fromJson(doc.data()!);
-      }
-      return null;
-    } catch (e) {
-      print('Error getting user document: $e');
       return null;
     }
   }
@@ -86,16 +35,37 @@ class FirebaseService {
     }
   }
 
-  // Link anonymous account with credential
-  Future<UserCredential?> linkWithCredential(AuthCredential credential) async {
+  // Get user document from Firestore
+  Future<UserModel?> getUserDocument(String uid) async {
     try {
-      if (currentUser != null) {
-        return await currentUser!.linkWithCredential(credential);
+      final doc = await _firestore.collection('users').doc(uid).get();
+      if (doc.exists && doc.data() != null) {
+        return UserModel.fromJson(doc.data()!);
       }
       return null;
     } catch (e) {
-      print('Error linking account: $e');
+      print('Error getting user document: $e');
       return null;
+    }
+  }
+
+  // Create or update user document in Firestore
+  Future<void> setUserDocument(String uid, UserModel user) async {
+    try {
+      await _firestore.collection('users').doc(uid).set(user.toJson());
+    } catch (e) {
+      print('Error setting user document: $e');
+      throw e;
+    }
+  }
+
+  // Update user document in Firestore
+  Future<void> updateUserDocument(String uid, Map<String, dynamic> data) async {
+    try {
+      await _firestore.collection('users').doc(uid).update(data);
+    } catch (e) {
+      print('Error updating user document: $e');
+      throw e;
     }
   }
 }

@@ -10,7 +10,8 @@ from fastapi import APIRouter, HTTPException, Depends, Header
 
 from models.user import (
     UserProfile, UserResponse, CreateUserRequest, UpdateUserRequest,
-    LinkAccountRequest, UserProvider, UserStatus, UserPreferences
+    LinkAccountRequest, UserProvider, UserStatus, UserPreferences,
+    OnboardingRequest
 )
 from models.common import APIResponse, ErrorResponse, ErrorType
 from services.firebase_service import FirebaseService
@@ -88,7 +89,8 @@ async def create_anonymous_user(
             last_login=user_profile.last_login,
             preferences=user_profile.preferences,
             total_sessions=user_profile.total_sessions,
-            last_mood_entry=user_profile.last_mood_entry
+            last_mood_entry=user_profile.last_mood_entry,
+            onboarding_completed=user_profile.onboarding_completed
         )
         
     except Exception as e:
@@ -118,7 +120,8 @@ async def get_user_profile(
             last_login=user_profile.last_login,
             preferences=user_profile.preferences,
             total_sessions=user_profile.total_sessions,
-            last_mood_entry=user_profile.last_mood_entry
+            last_mood_entry=user_profile.last_mood_entry,
+            onboarding_completed=user_profile.onboarding_completed
         )
         
     except HTTPException:
@@ -169,7 +172,8 @@ async def update_user_profile(
             last_login=updated_profile.last_login,
             preferences=updated_profile.preferences,
             total_sessions=updated_profile.total_sessions,
-            last_mood_entry=updated_profile.last_mood_entry
+            last_mood_entry=updated_profile.last_mood_entry,
+            onboarding_completed=updated_profile.onboarding_completed
         )
         
     except HTTPException:
@@ -177,6 +181,61 @@ async def update_user_profile(
     except Exception as e:
         logger.error(f"Error updating user profile: {e}")
         raise HTTPException(status_code=500, detail="Failed to update profile")
+
+
+@router.post("/complete-onboarding", response_model=UserResponse)
+async def complete_onboarding(
+    request: OnboardingRequest,
+    current_user: str = Depends(get_current_user),
+    repository: FirestoreRepository = Depends(get_repository)
+):
+    """Complete user onboarding with personalization preferences."""
+    try:
+        # Get current profile
+        user_profile = await repository.get_user(current_user)
+        if not user_profile:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Update preferences with onboarding data
+        updated_preferences = user_profile.preferences.model_copy()
+        updated_preferences.mitra_name = request.mitra_name
+        updated_preferences.age_group = request.age_group
+        updated_preferences.gender = request.gender
+        updated_preferences.preferred_voice = request.preferred_voice
+        
+        # Prepare updates
+        updates = {
+            "preferences": updated_preferences.dict(),
+            "onboarding_completed": True
+        }
+        
+        success = await repository.update_user(current_user, updates)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to complete onboarding")
+        
+        # Get updated profile
+        updated_profile = await repository.get_user(current_user)
+        
+        return UserResponse(
+            uid=updated_profile.uid,
+            provider=updated_profile.provider,
+            email=updated_profile.email,
+            display_name=updated_profile.display_name,
+            is_anonymous=updated_profile.is_anonymous,
+            status=updated_profile.status,
+            created_at=updated_profile.created_at,
+            last_login=updated_profile.last_login,
+            preferences=updated_profile.preferences,
+            total_sessions=updated_profile.total_sessions,
+            last_mood_entry=updated_profile.last_mood_entry,
+            onboarding_completed=updated_profile.onboarding_completed
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing onboarding: {e}")
+        raise HTTPException(status_code=500, detail="Failed to complete onboarding")
 
 
 @router.post("/link-account", response_model=UserResponse)

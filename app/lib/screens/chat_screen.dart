@@ -25,12 +25,28 @@ class ChatScreen extends ConsumerWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Chat with Mitra',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF2C3E50),
-                      ),
+                userAsync.when(
+                  data: (user) => Text(
+                    'Chat with ${user?.preferences.mitraName ?? 'Mitra'}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF2C3E50),
+                        ),
+                  ),
+                  loading: () => Text(
+                    'Chat with Mitra',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF2C3E50),
+                        ),
+                  ),
+                  error: (_, __) => Text(
+                    'Chat with Mitra',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF2C3E50),
+                        ),
+                  ),
                 ),
                 Text(
                   'Text Conversation',
@@ -122,7 +138,11 @@ class ChatScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'Start a conversation with Mitra',
+                              userAsync.when(
+                                data: (user) => 'Start a conversation with ${user?.preferences.mitraName ?? 'Mitra'}',
+                                loading: () => 'Start a conversation with Mitra',
+                                error: (_, __) => 'Start a conversation with Mitra',
+                              ),
                               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                     color: const Color(0xFF2C3E50),
                                     fontWeight: FontWeight.w600,
@@ -130,7 +150,11 @@ class ChatScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Share your thoughts, feelings, or anything on your mind',
+                              userAsync.when(
+                                data: (user) => 'Share your thoughts, feelings, or anything on your mind with ${user?.preferences.mitraName ?? 'Mitra'}',
+                                loading: () => 'Share your thoughts, feelings, or anything on your mind',
+                                error: (_, __) => 'Share your thoughts, feelings, or anything on your mind',
+                              ),
                               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                     color: const Color(0xFF7F8C8D),
                                   ),

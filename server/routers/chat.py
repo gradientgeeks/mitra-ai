@@ -15,7 +15,8 @@ from models.chat import (
     TextChatRequest, VoiceChatRequest, ChatResponse, 
     MultimodalChatRequest, SessionSummaryRequest, SessionSummaryResponse,
     ChatSession, ChatMessage, MessageRole, MessageType, MessageContent,
-    SafetyStatus, CrisisResponse, ChatMode
+    SafetyStatus, CrisisResponse, ChatMode, ProblemCategory,
+    SessionEndRequest, SessionResourcesResponse, UpdateSessionCategoriesRequest
 )
 from models.common import APIResponse, ErrorResponse, ErrorType
 from services.gemini_service import GeminiService
@@ -120,11 +121,35 @@ async def send_text_message(
                 timestamp=datetime.utcnow()
             )
         
+        # Get user context for personalization
+        user_profile = await repository.get_user(current_user)
+        user_context = None
+        if user_profile and user_profile.onboarding_completed:
+            user_context = {
+                "mitra_name": user_profile.preferences.mitra_name,
+                "age_group": user_profile.preferences.age_group.value if user_profile.preferences.age_group else None,
+                "gender": user_profile.preferences.gender.value if user_profile.preferences.gender else None,
+            }
+        
+        # Add session problem categories from request
+        if request.problem_categories:
+            session.problem_categories.extend([cat for cat in request.problem_categories if cat not in session.problem_categories])
+            if user_context:
+                user_context['session_problem_categories'] = [cat.value for cat in session.problem_categories]
+        
+        # Add user context from request if available
+        if request.user_context:
+            if user_context:
+                user_context.update(request.user_context)
+            else:
+                user_context = request.user_context
+        
         # Generate AI response
         all_messages = session.messages + [user_message]
         response_text, grounding_sources, thinking_text = await gemini_service.generate_text_response(
             all_messages,
-            include_grounding=request.include_grounding
+            include_grounding=request.include_grounding,
+            user_context=user_context
         )
         
         # Generate image if requested
@@ -157,6 +182,13 @@ async def send_text_message(
         # Add assistant message to session
         await repository.add_message_to_session(current_user, session_id, assistant_message)
         
+        # Analyze conversation for problem categories if not already set
+        all_messages = session.messages + [user_message, assistant_message]
+        suggested_categories = []
+        if not session.problem_categories:
+            suggested_categories = await gemini_service.analyze_conversation_for_problems(all_messages)
+            suggested_categories = [ProblemCategory(cat) for cat in suggested_categories if cat in [pc.value for pc in ProblemCategory]]
+        
         return ChatResponse(
             session_id=session_id,
             message_id=assistant_message.id,
@@ -165,7 +197,8 @@ async def send_text_message(
             safety_status=SafetyStatus.SAFE,
             grounding_sources=[source.dict() for source in grounding_sources] if grounding_sources else None,
             timestamp=datetime.utcnow(),
-            thinking_text=thinking_text
+            thinking_text=thinking_text,
+            suggested_problem_categories=suggested_categories
         )
         
     except Exception as e:
@@ -248,12 +281,31 @@ async def send_voice_message(
         # Generate response
         all_messages = session.messages + [user_message]
         
+        # Get user context for personalization
+        user_profile = await repository.get_user(current_user)
+        user_context = None
+        voice_preference = "Puck"  # default
+        
+        if user_profile and user_profile.onboarding_completed:
+            user_context = {
+                "mitra_name": user_profile.preferences.mitra_name,
+                "age_group": user_profile.preferences.age_group,
+                "gender": user_profile.preferences.gender,
+                "problem_categories": user_profile.preferences.problem_categories
+            }
+            voice_preference = user_profile.preferences.preferred_voice.value if user_profile.preferences.preferred_voice else "Puck"
+        
+        # Add user context from request if available (not applicable for file upload endpoint)
+        
+        # Override voice preference if provided in request (would need to be added as form parameter)
+        
         if response_format == "audio":
             # Generate voice response
             response_audio, transcription = await gemini_service.generate_voice_response(
                 all_messages,
-                voice="Puck",  # Could be from user preferences
-                language="en"
+                voice=voice_preference,
+                language="en",
+                user_context=user_context
             )
             
             assistant_message = ChatMessage(
@@ -270,13 +322,21 @@ async def send_voice_message(
             
             await repository.add_message_to_session(current_user, session_id, assistant_message)
             
+            # Analyze conversation for problem categories if not already set
+            all_messages_with_response = session.messages + [user_message, assistant_message]
+            suggested_categories = []
+            if not session.problem_categories:
+                suggested_categories = await gemini_service.analyze_conversation_for_problems(all_messages_with_response)
+                suggested_categories = [ProblemCategory(cat) for cat in suggested_categories if cat in [pc.value for pc in ProblemCategory]]
+            
             return ChatResponse(
                 session_id=session_id,
                 message_id=assistant_message.id,
                 response_text=transcription,
                 response_audio=response_audio,
                 safety_status=SafetyStatus.SAFE,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.utcnow(),
+                suggested_problem_categories=suggested_categories
             )
         else:
             # Generate text response
@@ -293,12 +353,20 @@ async def send_voice_message(
             
             await repository.add_message_to_session(current_user, session_id, assistant_message)
             
+            # Analyze conversation for problem categories if not already set
+            all_messages_with_response = session.messages + [user_message, assistant_message]
+            suggested_categories = []
+            if not session.problem_categories:
+                suggested_categories = await gemini_service.analyze_conversation_for_problems(all_messages_with_response)
+                suggested_categories = [ProblemCategory(cat) for cat in suggested_categories if cat in [pc.value for pc in ProblemCategory]]
+            
             return ChatResponse(
                 session_id=session_id,
                 message_id=assistant_message.id,
                 response_text=response_text,
                 safety_status=SafetyStatus.SAFE,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.utcnow(),
+                suggested_problem_categories=suggested_categories
             )
         
     except Exception as e:
@@ -408,18 +476,99 @@ async def send_multimodal_message(
         
         await repository.add_message_to_session(current_user, session_id, assistant_message)
         
+        # Analyze conversation for problem categories if not already set
+        all_messages_with_response = session.messages + [user_message, assistant_message]
+        suggested_categories = []
+        if not session.problem_categories:
+            suggested_categories = await gemini_service.analyze_conversation_for_problems(all_messages_with_response)
+            suggested_categories = [ProblemCategory(cat) for cat in suggested_categories if cat in [pc.value for pc in ProblemCategory]]
+        
         return ChatResponse(
             session_id=session_id,
             message_id=assistant_message.id,
             response_text=assistant_message.content.text,
             generated_image=assistant_message.content.image_data,
             safety_status=SafetyStatus.SAFE,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.utcnow(),
+            suggested_problem_categories=suggested_categories
         )
         
     except Exception as e:
         logger.error(f"Error in multimodal chat: {e}")
         raise HTTPException(status_code=500, detail="Failed to process multimodal message")
+
+
+@router.post("/session/{session_id}/categories")
+async def set_session_problem_categories(
+    session_id: str,
+    categories: List[ProblemCategory],
+    current_user: str = Depends(get_current_user),
+    repository: FirestoreRepository = Depends(get_repository)
+):
+    """Set problem categories for a chat session."""
+    try:
+        session = await repository.get_chat_session(current_user, session_id)
+        
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Update session with problem categories
+        session.problem_categories = categories
+        session.updated_at = datetime.utcnow()
+        
+        await repository.update_chat_session(session)
+        
+        return {"message": "Problem categories updated successfully", "categories": categories}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting session problem categories: {e}")
+        raise HTTPException(status_code=500, detail="Failed to set problem categories")
+
+
+@router.post("/session/{session_id}/complete", response_model=dict)
+async def complete_session(
+    session_id: str,
+    current_user: str = Depends(get_current_user),
+    gemini_service: GeminiService = Depends(get_gemini_service),
+    repository: FirestoreRepository = Depends(get_repository)
+):
+    """Complete a chat session and generate resources based on the conversation."""
+    try:
+        session = await repository.get_chat_session(current_user, session_id)
+        
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Generate session resources if there are messages and problem categories
+        generated_resources = []
+        if session.messages and session.problem_categories:
+            generated_resources = await gemini_service.generate_session_resources(
+                session.messages, 
+                session.problem_categories
+            )
+            
+            # Update session with generated resources
+            session.generated_resources = generated_resources
+        
+        # Mark session as inactive
+        session.is_active = False
+        session.updated_at = datetime.utcnow()
+        
+        await repository.update_chat_session(session)
+        
+        return {
+            "message": "Session completed successfully",
+            "session_id": session_id,
+            "generated_resources": generated_resources
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error completing session: {e}")
+        raise HTTPException(status_code=500, detail="Failed to complete session")
 
 
 @router.get("/session/{session_id}", response_model=SessionSummaryResponse)

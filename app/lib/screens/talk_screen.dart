@@ -1,11 +1,15 @@
+import 'package:app/models/user_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/auth_provider.dart';
 
 class TalkScreen extends ConsumerWidget {
   const TalkScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final userAsync = ref.watch(userDocumentProvider);
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
@@ -22,18 +26,48 @@ class TalkScreen extends ConsumerWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Talk with Mitra',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF2C3E50),
-                      ),
+                userAsync.when(
+                  data: (user) => Text(
+                    'Talk with ${user?.preferences.mitraName ?? 'Mitra'}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF2C3E50),
+                        ),
+                  ),
+                  loading: () => Text(
+                    'Talk with Mitra',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF2C3E50),
+                        ),
+                  ),
+                  error: (_, __) => Text(
+                    'Talk with Mitra',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF2C3E50),
+                        ),
+                  ),
                 ),
-                Text(
-                  'Voice Conversation',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF7F8C8D),
-                      ),
+                userAsync.when(
+                  data: (user) => Text(
+                    'Voice: ${user?.preferences.preferredVoice.displayName ?? 'Default'}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF7F8C8D),
+                        ),
+                  ),
+                  loading: () => Text(
+                    'Voice Conversation',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF7F8C8D),
+                        ),
+                  ),
+                  error: (_, __) => Text(
+                    'Voice Conversation',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF7F8C8D),
+                        ),
+                  ),
                 ),
               ],
             ),
@@ -60,7 +94,7 @@ class TalkScreen extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF9B59B6).withOpacity(0.3),
+                    color: const Color(0xFF9B59B6).withValues(alpha: 0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 6),
                   ),
@@ -83,9 +117,13 @@ class TalkScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Have natural conversations with Mitra using voice',
+                    userAsync.when(
+                      data: (user) => 'Have natural conversations with ${user?.preferences.mitraName ?? 'Mitra'} using voice',
+                      loading: () => 'Have natural conversations with Mitra using voice',
+                      error: (_, __) => 'Have natural conversations with Mitra using voice',
+                    ),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.white.withOpacity(0.9),
+                          color: Colors.white.withValues(alpha: 0.9),
                         ),
                     textAlign: TextAlign.center,
                   ),
@@ -113,7 +151,7 @@ class TalkScreen extends ConsumerWidget {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF3498DB).withOpacity(0.3),
+                            color: const Color(0xFF3498DB).withValues(alpha: 0.3),
                             blurRadius: 20,
                             offset: const Offset(0, 10),
                           ),
@@ -140,7 +178,11 @@ class TalkScreen extends ConsumerWidget {
                   const SizedBox(height: 8),
 
                   Text(
-                    'Speak naturally - Mitra will listen and respond',
+                    userAsync.when(
+                      data: (user) => 'Speak naturally - ${user?.preferences.mitraName ?? 'Mitra'} will listen and respond',
+                      loading: () => 'Speak naturally - Mitra will listen and respond',
+                      error: (_, __) => 'Speak naturally - Mitra will listen and respond',
+                    ),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: const Color(0xFF7F8C8D),
                         ),
@@ -178,10 +220,10 @@ class TalkScreen extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF27AE60).withOpacity(0.1),
+                color: const Color(0xFF27AE60).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: const Color(0xFF27AE60).withOpacity(0.3),
+                  color: const Color(0xFF27AE60).withValues(alpha: 0.3),
                   width: 1,
                 ),
               ),
@@ -220,7 +262,7 @@ class TalkScreen extends ConsumerWidget {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF3498DB).withOpacity(0.1),
+            color: const Color(0xFF3498DB).withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(

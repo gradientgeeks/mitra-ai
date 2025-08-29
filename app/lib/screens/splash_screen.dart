@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import 'login_screen.dart';
+import 'onboarding_screen.dart';
 import 'main_navigation_screen.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -52,18 +53,44 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     }
   }
 
-  void _checkAuthState() {
+  void _checkAuthState() async {
     final authState = ref.read(authStateProvider);
+    
     authState.when(
-      data: (user) {
+      data: (user) async {
         if (user != null) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
-          );
+          // User is authenticated, check onboarding status
+          try {
+            final userDoc = await ref.read(userDocumentProvider.future);
+            
+            if (mounted) {
+              if (userDoc?.isOnboardingCompleted == true) {
+                // User has completed onboarding, go to main app
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+                );
+              } else {
+                // User needs to complete onboarding
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+                );
+              }
+            }
+          } catch (e) {
+            // Error getting user document, assume onboarding needed
+            if (mounted) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+              );
+            }
+          }
         } else {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const LoginScreen()),
-          );
+          // User not authenticated, go to login
+          if (mounted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+            );
+          }
         }
       },
       loading: () {
@@ -111,7 +138,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: 20,
                             offset: const Offset(0, 10),
                           ),

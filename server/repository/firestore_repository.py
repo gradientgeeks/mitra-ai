@@ -183,6 +183,23 @@ class FirestoreRepository:
             logger.error(f"Error updating session summary: {e}")
             return False
 
+    async def update_chat_session(self, session: ChatSession) -> bool:
+        """Update an entire chat session."""
+        try:
+            session_data = session.dict()
+            session_data["created_at"] = session.created_at
+            session_data["updated_at"] = session.updated_at
+            
+            # Ensure message timestamps are preserved
+            for msg in session_data.get("messages", []):
+                if "timestamp" in msg and isinstance(msg["timestamp"], datetime):
+                    msg["timestamp"] = msg["timestamp"]
+            
+            return await self.firebase_service.save_chat_session(session.user_id, session_data)
+        except Exception as e:
+            logger.error(f"Error updating chat session: {e}")
+            return False
+
     # Mood tracking operations
     async def create_mood_entry(self, mood_entry: MoodEntry) -> bool:
         """Create a new mood entry."""
@@ -266,7 +283,7 @@ class FirestoreRepository:
     async def create_journal_entry(self, journal_entry: JournalEntry) -> bool:
         """Create a new journal entry."""
         try:
-            journal_data = journal_entry.dict()
+            journal_data = journal_entry.model_dump()
             # Store datetime objects directly for Firestore
             journal_data["created_at"] = journal_entry.created_at
             journal_data["updated_at"] = journal_entry.updated_at
