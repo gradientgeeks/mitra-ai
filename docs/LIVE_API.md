@@ -484,3 +484,15 @@ Dutch (Netherlands)	nl-NL	Korean (South Korea)	ko-KR
 Mandarin Chinese (China)*	cmn-CN	Polish (Poland)	pl-PL
 Russian (Russia)	ru-RU	Thai (Thailand)	th-TH
 Languages marked with an asterisk (*) are not available for Native audio.
+
+Zephyr -- Bright	Puck -- Upbeat	Charon -- Informative
+Kore -- Firm	Fenrir -- Excitable	Leda -- Youthful
+Orus -- Firm	Aoede -- Breezy	Callirrhoe -- Easy-going
+Autonoe -- Bright	Enceladus -- Breathy	Iapetus -- Clear
+Umbriel -- Easy-going	Algieba -- Smooth	Despina -- Smooth
+Erinome -- Clear	Algenib -- Gravelly	Rasalgethi -- Informative
+Laomedeia -- Upbeat	Achernar -- Soft	Alnilam -- Firm
+Schedar -- Even	Gacrux -- Mature	Pulcherrima -- Forward
+Achird -- Friendly	Zubenelgenubi -- Casual	Vindemiatrix -- Gentle
+Sadachbia -- Lively	Sadaltager -- Knowledgeable	Sulafat -- Warm
+You can hear all the voice options in AI Studio.
