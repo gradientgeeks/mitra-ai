@@ -49,6 +49,7 @@ dependencies:
   # HTTP & API
   http: ^1.1.2
   dio: ^5.4.0
+  web_socket_channel: ^2.4.0  # Added for WebSocket support
 
   # Markdown & Rich Text
   flutter_markdown: ^0.7.3+1

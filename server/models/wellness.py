@@ -49,164 +49,10 @@ class MeditationType(str, Enum):
     LOVING_KINDNESS = "loving_kindness"
     SLEEP = "sleep"
     STRESS_RELIEF = "stress_relief"
-    ANXIETY_RELIEF = "anxiety_relief"
-    FOCUS = "focus"
-
-
-class JournalType(str, Enum):
-    """Types of journal entries."""
-    FREE_FORM = "free_form"
-    GUIDED = "guided"
-    GRATITUDE = "gratitude"
-    REFLECTION = "reflection"
-    GOAL_SETTING = "goal_setting"
-
-
-class MoodEntry(BaseModel):
-    """Daily mood tracking entry."""
-    id: str
-    user_id: str
-    date: date
-    mood_level: MoodLevel
-    emotion_tags: List[EmotionTag] = []
-    notes: Optional[str] = None
-    energy_level: Optional[int] = Field(None, ge=1, le=10)
-    sleep_quality: Optional[int] = Field(None, ge=1, le=10)
-    stress_level: Optional[int] = Field(None, ge=1, le=10)
-    created_at: datetime
-    updated_at: datetime
-
-
-class CreateMoodEntryRequest(BaseModel):
-    """Request to create a mood entry."""
-    mood_level: MoodLevel
-    emotion_tags: Optional[List[EmotionTag]] = []
-    notes: Optional[str] = Field(None, max_length=500)
-    energy_level: Optional[int] = Field(None, ge=1, le=10)
-    sleep_quality: Optional[int] = Field(None, ge=1, le=10)
-    stress_level: Optional[int] = Field(None, ge=1, le=10)
-
-
-class UpdateMoodEntryRequest(BaseModel):
-    """Request to update a mood entry."""
-    mood_level: Optional[MoodLevel] = None
-    emotion_tags: Optional[List[EmotionTag]] = None
-    notes: Optional[str] = Field(None, max_length=500)
-    energy_level: Optional[int] = Field(None, ge=1, le=10)
-    sleep_quality: Optional[int] = Field(None, ge=1, le=10)
-    stress_level: Optional[int] = Field(None, ge=1, le=10)
-
-
-class MoodAnalysis(BaseModel):
-    """Analysis of mood patterns."""
-    period_start: date
-    period_end: date
-    average_mood: float
-    mood_trend: str  # "improving", "declining", "stable"
-    common_emotions: List[EmotionTag]
-    insights: List[str]
-    recommendations: List[str]
-
-
-class JournalEntry(BaseModel):
-    """Journal entry."""
-    id: str
-    user_id: str
-    type: JournalType
-    title: Optional[str] = None
-    content: str
-    mood_before: Optional[MoodLevel] = None
-    mood_after: Optional[MoodLevel] = None
-    emotion_tags: List[EmotionTag] = []
-    is_private: bool = True
-    created_at: datetime
-    updated_at: datetime
-
-
-class CreateJournalEntryRequest(BaseModel):
-    """Request to create a journal entry."""
-    type: JournalType = JournalType.FREE_FORM
-    title: Optional[str] = Field(None, max_length=100)
-    content: str = Field(..., min_length=1, max_length=5000)
-    mood_before: Optional[MoodLevel] = None
-    emotion_tags: Optional[List[EmotionTag]] = []
-
-
-class UpdateJournalEntryRequest(BaseModel):
-    """Request to update a journal entry."""
-    title: Optional[str] = Field(None, max_length=100)
-    content: Optional[str] = Field(None, min_length=1, max_length=5000)
-    mood_after: Optional[MoodLevel] = None
-    emotion_tags: Optional[List[EmotionTag]] = None
-
-
-class MeditationSession(BaseModel):
-    """Meditation session record."""
-    id: str
-    user_id: str
-    type: MeditationType
-    title: str
-    duration_minutes: int
-    audio_url: Optional[str] = None
-    script: Optional[str] = None
-    completed: bool = False
-    mood_before: Optional[MoodLevel] = None
-    mood_after: Optional[MoodLevel] = None
-    created_at: datetime
-    completed_at: Optional[datetime] = None
-
-
-class GenerateMeditationRequest(BaseModel):
-    """Request to generate a custom meditation."""
-    type: MeditationType
-    duration_minutes: int = Field(..., ge=1, le=60)
-    focus_area: Optional[str] = Field(None, max_length=200)
-    current_mood: Optional[MoodLevel] = None
-    voice: Optional[str] = "Puck"
-    format: str = Field(default="audio", pattern="^(audio|text)$")
-
-
-class MeditationResponse(BaseModel):
-    """Response with generated meditation."""
-    session_id: str
-    title: str
-    type: MeditationType
-    duration_minutes: int
-    audio_data: Optional[bytes] = None
-    script: Optional[str] = None
-    instructions: List[str]
-    created_at: datetime
-
-
-class WellnessInsight(BaseModel):
-    """Wellness insight and recommendation."""
-    id: str
-    user_id: str
-    type: str  # "mood_pattern", "journal_reflection", "meditation_suggestion"
-    title: str
-    content: str
-    priority: str = Field(..., pattern="^(low|medium|high)$")
-    action_items: List[str] = []
-    expires_at: Optional[datetime] = None
-    created_at: datetime
-    viewed: bool = False
-
-
-class WellnessDashboard(BaseModel):
-    """Wellness dashboard data."""
-    user_id: str
-    current_mood: Optional[MoodLevel] = None
-    mood_trend: Optional[str] = None
-    recent_mood_entries: List[MoodEntry] = []
-    recent_journal_entries: List[JournalEntry] = []
-    recent_meditations: List[MeditationSession] = []
-    insights: List[WellnessInsight] = []
-    streak_days: int = 0
-    total_sessions: int = 0
 
 
 class ResourceType(str, Enum):
-    """Types of generated resources."""
+    """Types of wellness resources."""
     MEDITATION = "meditation"
     BREATHING_EXERCISE = "breathing_exercise"
     COPING_STRATEGIES = "coping_strategies"
@@ -218,14 +64,183 @@ class ResourceType(str, Enum):
 
 
 class GeneratedResource(BaseModel):
-    """Resource generated based on session content."""
-    id: str
+    """Generated wellness resource."""
+    id: str = Field(..., description="Unique resource ID")
     type: ResourceType
-    title: str
-    description: str
-    content: str
-    duration_minutes: Optional[int] = None
+    title: str = Field(..., max_length=200)
+    description: str = Field(..., max_length=500)
+    content: str = Field(..., description="Main resource content")
+    duration_minutes: Optional[int] = Field(None, ge=1, le=120)
     difficulty_level: str = Field("beginner", pattern="^(beginner|intermediate|advanced)$")
-    tags: List[str] = []
-    created_at: datetime
+    tags: List[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     problem_category: ProblemCategory
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class MoodEntry(BaseModel):
+    """Daily mood entry."""
+    id: str = Field(..., description="Unique entry ID")
+    user_id: str = Field(..., description="User ID")
+    date: date
+    mood_level: MoodLevel
+    emotion_tags: List[EmotionTag] = Field(default_factory=list)
+    notes: Optional[str] = Field(None, max_length=500)
+    stress_level: Optional[int] = Field(None, ge=1, le=10)
+    sleep_hours: Optional[float] = Field(None, ge=0, le=24)
+    energy_level: Optional[int] = Field(None, ge=1, le=10)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = None
+
+
+class JournalEntry(BaseModel):
+    """Journal entry for reflection."""
+    id: str = Field(..., description="Unique entry ID")
+    user_id: str = Field(..., description="User ID")
+    title: Optional[str] = Field(None, max_length=100)
+    content: str = Field(..., min_length=1, max_length=5000)
+    mood_before: Optional[MoodLevel] = None
+    mood_after: Optional[MoodLevel] = None
+    tags: List[str] = Field(default_factory=list)
+    is_private: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = None
+
+
+class MeditationSession(BaseModel):
+    """Meditation session record."""
+    id: str = Field(..., description="Unique session ID")
+    user_id: str = Field(..., description="User ID")
+    type: MeditationType
+    duration_minutes: int = Field(..., ge=1, le=120)
+    completed: bool = False
+    mood_before: Optional[MoodLevel] = None
+    mood_after: Optional[MoodLevel] = None
+    notes: Optional[str] = Field(None, max_length=500)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
+
+
+class WellnessGoal(BaseModel):
+    """Wellness goal tracking."""
+    id: str = Field(..., description="Unique goal ID")
+    user_id: str = Field(..., description="User ID")
+    title: str = Field(..., max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    category: ProblemCategory
+    target_date: Optional[date] = None
+    completed: bool = False
+    progress_percentage: int = Field(0, ge=0, le=100)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = None
+
+
+# Request/Response models
+class CreateMoodEntryRequest(BaseModel):
+    """Request to create mood entry."""
+    mood_level: MoodLevel
+    emotion_tags: List[EmotionTag] = Field(default_factory=list)
+    notes: Optional[str] = Field(None, max_length=500)
+    stress_level: Optional[int] = Field(None, ge=1, le=10)
+    sleep_hours: Optional[float] = Field(None, ge=0, le=24)
+    energy_level: Optional[int] = Field(None, ge=1, le=10)
+
+
+class CreateJournalEntryRequest(BaseModel):
+    """Request to create journal entry."""
+    title: Optional[str] = Field(None, max_length=100)
+    content: str = Field(..., min_length=1, max_length=5000)
+    mood_before: Optional[MoodLevel] = None
+    tags: List[str] = Field(default_factory=list)
+    is_private: bool = True
+
+
+class StartMeditationRequest(BaseModel):
+    """Request to start meditation session."""
+    type: MeditationType
+    duration_minutes: int = Field(..., ge=1, le=120)
+    mood_before: Optional[MoodLevel] = None
+
+
+class CompleteMeditationRequest(BaseModel):
+    """Request to complete meditation session."""
+    mood_after: Optional[MoodLevel] = None
+    notes: Optional[str] = Field(None, max_length=500)
+
+
+class WellnessInsightRequest(BaseModel):
+    """Request for wellness insights."""
+    days_back: int = Field(30, ge=7, le=365)
+    include_mood: bool = True
+    include_journal: bool = True
+    include_meditation: bool = True
+
+
+class WellnessInsightResponse(BaseModel):
+    """Wellness insights response."""
+    period_start: date
+    period_end: date
+    mood_trends: Optional[Dict[str, Any]] = None
+    journal_themes: Optional[List[str]] = None
+    meditation_stats: Optional[Dict[str, Any]] = None
+    recommendations: List[str] = Field(default_factory=list)
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# Voice conversation models for Live API
+class VoiceSessionState(str, Enum):
+    """Voice session states."""
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+    TALKING = "talking"
+    LISTENING = "listening"
+    PROCESSING = "processing"
+    ENDED = "ended"
+    ERROR = "error"
+
+
+class VoiceSession(BaseModel):
+    """Voice conversation session using Gemini Live API."""
+    session_id: str = Field(..., description="Unique voice session ID")
+    user_id: str = Field(..., description="User ID")
+    problem_category: Optional[ProblemCategory] = None
+    state: VoiceSessionState = VoiceSessionState.CONNECTING
+    voice_option: str = "Puck"  # Voice preference
+    language: str = "en"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    connected_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    total_duration_seconds: Optional[int] = None
+    transcript: List[Dict[str, str]] = Field(default_factory=list)  # {"role": "user/assistant", "text": "...", "timestamp": "..."}
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class VoiceSessionRequest(BaseModel):
+    """Request to start a voice session."""
+    problem_category: Optional[ProblemCategory] = None
+    voice_option: str = "Puck"
+    language: str = "en"
+
+
+class VoiceSessionResponse(BaseModel):
+    """Response when starting a voice session."""
+    session_id: str
+    state: VoiceSessionState
+    websocket_url: str
+    created_at: datetime
+
+
+class VoiceInterruptionEvent(BaseModel):
+    """Event when voice is interrupted."""
+    session_id: str
+    interrupted_at: datetime
+    reason: str = "user_speech_detected"
+
+
+class VoiceTranscriptEvent(BaseModel):
+    """Real-time transcript event."""
+    session_id: str
+    role: str  # "user" or "assistant"
+    text: str
+    timestamp: datetime
+    is_partial: bool = False  # For streaming transcription
