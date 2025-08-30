@@ -155,10 +155,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF25D366).withOpacity(0.1),
+                color: const Color(0xFF25D366).withValues(alpha: 0.1),
                 border: Border(
                   bottom: BorderSide(
-                    color: const Color(0xFF25D366).withOpacity(0.2),
+                    color: const Color(0xFF25D366).withValues(alpha: 0.2),
                     width: 1,
                   ),
                 ),
@@ -200,46 +200,54 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildEmptyState(BuildContext context, UserModel? user, ChatState chatState) {
-    return Container(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          MitraProfileAvatar(
-            imageUrl: user?.preferences.mitraProfileImageUrl,
-            mitraName: user?.preferences.mitraName ?? 'Mitra',
-            size: 80,
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Hi! I\'m ${user?.preferences.mitraName ?? 'Mitra'}',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: const Color(0xFF2C3E50),
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          const SizedBox(height: 12),
-          if (chatState.problemCategory != null) ...[
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: MediaQuery.of(context).size.height -
+                    MediaQuery.of(context).padding.top -
+                    AppBar().preferredSize.height -
+                    100, // Account for input area
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            MitraProfileAvatar(
+              imageUrl: user?.preferences.mitraProfileImageUrl,
+              mitraName: user?.preferences.mitraName ?? 'Mitra',
+              size: 80,
+            ),
+            const SizedBox(height: 24),
             Text(
-              'I understand you\'re dealing with ${getProblemCategoryDisplayName(chatState.problemCategory!).toLowerCase()}.',
+              'Hi! I\'m ${user?.preferences.mitraName ?? 'Mitra'}',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: const Color(0xFF2C3E50),
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            if (chatState.problemCategory != null) ...[
+              Text(
+                'I understand you\'re dealing with ${getProblemCategoryDisplayName(chatState.problemCategory!).toLowerCase()}.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF7F8C8D),
+                    ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+            ],
+            Text(
+              'I\'m here to listen and support you. Share whatever is on your mind, and we\'ll work through it together.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: const Color(0xFF7F8C8D),
                   ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 24),
+            // Suggested conversation starters
+            _buildConversationStarters(context, ref, chatState),
           ],
-          Text(
-            'I\'m here to listen and support you. Share whatever is on your mind, and we\'ll work through it together.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF7F8C8D),
-                ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          // Suggested conversation starters
-          _buildConversationStarters(context, ref, chatState),
-        ],
+        ),
       ),
     );
   }
@@ -384,7 +392,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 2,
                     offset: const Offset(0, 1),
                   ),
@@ -434,7 +442,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Widget _buildMessageInput(BuildContext context, WidgetRef ref, ChatState chatState) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+      ),
       decoration: const BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -446,6 +459,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ],
       ),
       child: SafeArea(
+        top: false,
         child: Row(
           children: [
             Expanded(
@@ -469,7 +483,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       vertical: 16,
                     ),
                   ),
-                  maxLines: null,
+                  maxLines: 4,
+                  minLines: 1,
                   textCapitalization: TextCapitalization.sentences,
                   onSubmitted: (_) => _sendMessage(ref),
                 ),
