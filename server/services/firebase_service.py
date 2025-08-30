@@ -296,7 +296,10 @@ class FirebaseService:
             Dictionary with user claims (uid, email, etc.)
         """
         try:
-            decoded_token = self.auth.verify_id_token(id_token)
+            # Run the synchronous Firebase verification in an executor to avoid blocking
+            import asyncio
+            loop = asyncio.get_event_loop()
+            decoded_token = await loop.run_in_executor(None, self.auth.verify_id_token, id_token)
             return decoded_token
             
         except exceptions.InvalidArgumentError as e:

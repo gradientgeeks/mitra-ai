@@ -114,43 +114,47 @@ class LiveVoiceService(BaseGeminiService):
             user_profile = session_data["user_profile"]
 
             # Configure Live API for phone call-like experience
-            config = types.LiveConnectConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name=voice_session.voice_option
-                        )
-                    )
-                ),
+            config = {
+                "response_modalities": ["AUDIO"],
+                "speech_config": {
+                    "voice_config": {
+                        "prebuilt_voice_config": {
+                            "voice_name": voice_session.voice_option
+                        }
+                    }
+                },
                 # Enable both input and output transcription
-                input_audio_transcription=types.InputAudioTranscriptionConfig(),
-                output_audio_transcription=types.OutputAudioTranscriptionConfig(),
+                "input_audio_transcription": {},
+                "output_audio_transcription": {},
                 # Configure VAD for natural conversation flow
-                realtime_input_config=types.RealtimeInputConfig(
-                    automatic_activity_detection=types.AutomaticActivityDetection(
-                        disabled=False,
-                        start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_MEDIUM,
-                        end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_LOW,
-                        prefix_padding_ms=200,
-                        silence_duration_ms=800,
-                    )
-                )
-            )
+                "realtime_input_config": {
+                    "automatic_activity_detection": {
+                        "disabled": False,
+                        "start_of_speech_sensitivity": types.StartSensitivity.START_SENSITIVITY_HIGH,
+                        "end_of_speech_sensitivity": types.EndSensitivity.END_SENSITIVITY_HIGH,
+                        "prefix_padding_ms": 200,
+                        "silence_duration_ms": 800,
+                    }
+                }
+            }
 
             # Add personalized system instruction for mental health support
             system_instruction = self._get_personalized_system_instruction(
                 user_profile, voice_session.problem_category
             )
 
-            # Connect to Gemini Live API
-            live_session = await self.client.aio.live.connect(
-                model="gemini-2.5-flash-preview",  # Use the Live API model
+            # Create the Live API connection context manager
+            live_connection = self.client.aio.live.connect(
+                model="gemini-live-2.5-flash-preview",  # Use the correct Live API model
                 config=config
             )
-
-            # Store live session and websocket
+            
+            # Enter the context manager and store the session
+            live_session = await live_connection.__aenter__()
+            
+            # Store live session, context manager, and websocket
             session_data["live_session"] = live_session
+            session_data["live_connection"] = live_connection
             session_data["websocket"] = websocket
 
             # Update session state
@@ -186,9 +190,8 @@ class LiveVoiceService(BaseGeminiService):
             live_session = session_data["live_session"]
             websocket = session_data["websocket"]
 
-            async with live_session as session:
-                async for message in session.receive():
-                    await self._process_live_message(session_id, message)
+            async for message in live_session.receive():
+                await self._process_live_message(session_id, message)
 
         except Exception as e:
             logger.error(f"Error handling live session {session_id}: {e}")
@@ -212,63 +215,44 @@ class LiveVoiceService(BaseGeminiService):
 
             websocket = session_data["websocket"]
 
-            # Handle different message types
-            if hasattr(message, 'server_content') and message.server_content:
-                server_content = message.server_content
+            # Log the message type for debugging
+            logger.debug(f"Live API message type: {type(message)}, has audio: {hasattr(message, 'audio')}")
 
-                # Handle interruptions (when user starts speaking)
-                if hasattr(server_content, 'interrupted') and server_content.interrupted:
-                    await self._handle_interruption(session_id)
-
-                # Handle audio output from the model
-                if hasattr(server_content, 'model_turn') and server_content.model_turn:
-                    await self._handle_model_audio_output(session_id, server_content.model_turn)
-
-                # Handle input transcription (user speech)
-                if hasattr(server_content, 'input_transcription') and server_content.input_transcription:
-                    transcript_text = server_content.input_transcription.text
-                    await self._handle_transcript(session_id, "user", transcript_text, is_final=True)
-
-                # Handle output transcription (model speech)
-                if hasattr(server_content, 'output_transcription') and server_content.output_transcription:
-                    transcript_text = server_content.output_transcription.text
-                    await self._handle_transcript(session_id, "assistant", transcript_text, is_final=True)
-
-                # Handle turn completion
-                if hasattr(server_content, 'turn_complete') and server_content.turn_complete:
-                    await self._update_session_state(session_id, VoiceSessionState.LISTENING)
-
-            # Handle token usage
-            if hasattr(message, 'usage_metadata') and message.usage_metadata:
-                await self._send_usage_info(session_id, message.usage_metadata)
+            # Handle different message types based on the Live API response format
+            # The message could be a string, audio data, or a structured response
+            
+            # Handle audio output
+            if hasattr(message, 'audio') and message.audio is not None:
+                # This is audio output from the model
+                await websocket.send_json({
+                    "type": "audio_chunk",
+                    "data": base64.b64encode(message.audio).decode(),
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "mime_type": "audio/pcm;rate=24000"  # Live API outputs at 24kHz
+                })
+                await self._update_session_state(session_id, VoiceSessionState.TALKING)
+            
+            # Handle text transcript
+            elif hasattr(message, 'text') and message.text is not None:
+                await self._handle_transcript(session_id, "assistant", message.text, is_final=True)
+            
+            # Handle raw bytes (audio data)
+            elif isinstance(message, bytes):
+                await websocket.send_json({
+                    "type": "audio_chunk",
+                    "data": base64.b64encode(message).decode(),
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "mime_type": "audio/pcm;rate=24000"
+                })
+                await self._update_session_state(session_id, VoiceSessionState.TALKING)
+            
+            # Handle string messages (could be transcripts)
+            elif isinstance(message, str):
+                await self._handle_transcript(session_id, "assistant", message, is_final=True)
 
         except Exception as e:
             logger.error(f"Error processing live message for session {session_id}: {e}")
 
-    async def _handle_model_audio_output(self, session_id: str, model_turn):
-        """Handle audio output from the model."""
-        try:
-            session_data = self.active_sessions.get(session_id)
-            if not session_data:
-                return
-
-            websocket = session_data["websocket"]
-
-            for part in model_turn.parts:
-                if hasattr(part, 'inline_data') and part.inline_data:
-                    # Send audio data to client for immediate playback
-                    await websocket.send_json({
-                        "type": "audio_chunk",
-                        "data": base64.b64encode(part.inline_data.data).decode(),
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "mime_type": part.inline_data.mime_type
-                    })
-
-                    # Update session state to talking
-                    await self._update_session_state(session_id, VoiceSessionState.TALKING)
-
-        except Exception as e:
-            logger.error(f"Error handling model audio output: {e}")
 
     async def send_audio_input(self, session_id: str, audio_data: bytes, mime_type: str = "audio/pcm;rate=16000"):
         """
@@ -288,9 +272,7 @@ class LiveVoiceService(BaseGeminiService):
             live_session = session_data["live_session"]
 
             # Send audio data to Live API
-            await live_session.send_realtime_input(
-                audio=types.Blob(data=audio_data, mime_type=mime_type)
-            )
+            await live_session.send_audio(audio_data)
 
             # Update session state
             if not session_data["is_speaking"]:
@@ -314,8 +296,9 @@ class LiveVoiceService(BaseGeminiService):
 
             live_session = session_data["live_session"]
 
-            # Send audio stream end signal
-            await live_session.send_realtime_input(audio_stream_end=True)
+            # Audio stream end is handled automatically by the Live API with VAD
+            # Just update the speaking state
+            pass
 
             # Update speaking state
             session_data["is_speaking"] = False
@@ -344,11 +327,11 @@ class LiveVoiceService(BaseGeminiService):
                 category_greeting = self._get_category_specific_greeting(voice_session.problem_category, mitra_name)
                 greeting = category_greeting
 
-            # Send the greeting as initial message
-            await live_session.send_client_content(
-                turns=[{"role": "user", "parts": [{"text": f"{system_instruction}\n\nPlease start the conversation with: {greeting}"}]}],
-                turn_complete=True
-            )
+            # Send the system instruction and greeting as initial message
+            initial_message = f"{system_instruction}\n\nPlease start the conversation with this greeting: {greeting}"
+            
+            # Send initial message to start the conversation
+            await live_session.send_text(initial_message)
 
             session_data["conversation_started"] = True
 
@@ -383,14 +366,13 @@ CONVERSATION STYLE:
 
         if problem_category:
             category_guidance = {
-                ProblemCategory.ANXIETY: "Focus on breathing techniques, grounding exercises, and anxiety management strategies.",
-                ProblemCategory.DEPRESSION: "Emphasize emotional validation, gentle encouragement, and mood improvement techniques.",
-                ProblemCategory.STRESS: "Concentrate on stress reduction techniques, time management, and relaxation methods.",
-                ProblemCategory.RELATIONSHIPS: "Focus on communication skills, boundary setting, and relationship dynamics.",
+                ProblemCategory.STRESS_ANXIETY: "Focus on breathing techniques, grounding exercises, and anxiety management strategies.",
+                ProblemCategory.DEPRESSION_SADNESS: "Emphasize emotional validation, gentle encouragement, and mood improvement techniques.",
+                ProblemCategory.RELATIONSHIP_ISSUES: "Focus on communication skills, boundary setting, and relationship dynamics.",
                 ProblemCategory.SELF_ESTEEM: "Emphasize self-compassion, strength identification, and confidence building.",
-                ProblemCategory.GRIEF: "Provide gentle support, validation of grief process, and coping strategies.",
-                ProblemCategory.TRAUMA: "Be especially gentle, focus on safety and grounding, suggest professional support when needed.",
-                ProblemCategory.GENERAL: "Be flexible and responsive to whatever the user wants to discuss."
+                ProblemCategory.GRIEF_LOSS: "Provide gentle support, validation of grief process, and coping strategies.",
+                ProblemCategory.SOCIAL_ANXIETY: "Focus on social confidence building, exposure techniques, and coping strategies.",
+                ProblemCategory.GENERAL_WELLNESS: "Be flexible and responsive to whatever the user wants to discuss."
             }
 
             if problem_category in category_guidance:
@@ -401,17 +383,16 @@ CONVERSATION STYLE:
     def _get_category_specific_greeting(self, problem_category: ProblemCategory, mitra_name: str) -> str:
         """Get category-specific greeting."""
         greetings = {
-            ProblemCategory.ANXIETY: f"Hi there! I'm {mitra_name}. I understand you're dealing with some anxiety right now. That takes courage to reach out. I'm here to listen and help you work through these feelings. Take a deep breath with me - what's been on your mind lately?",
-            ProblemCategory.DEPRESSION: f"Hello, I'm {mitra_name}. I want you to know that reaching out today shows real strength. Depression can make everything feel heavy, but you don't have to carry it alone. I'm here to listen without judgment. How have you been feeling lately?",
-            ProblemCategory.STRESS: f"Hi, I'm {mitra_name}. It sounds like you're dealing with some stress right now. That's completely understandable - life can feel overwhelming sometimes. I'm here to help you find some calm and work through what's weighing on you. What's been the most stressful part of your day?",
-            ProblemCategory.RELATIONSHIPS: f"Hello, I'm {mitra_name}. Relationships can be one of the most rewarding and challenging parts of life. I'm here to listen and help you navigate whatever you're experiencing. What's been happening in your relationships that you'd like to talk about?",
+            ProblemCategory.STRESS_ANXIETY: f"Hi there! I'm {mitra_name}. I understand you're dealing with some stress and anxiety right now. That takes courage to reach out. I'm here to listen and help you work through these feelings. Take a deep breath with me - what's been on your mind lately?",
+            ProblemCategory.DEPRESSION_SADNESS: f"Hello, I'm {mitra_name}. I want you to know that reaching out today shows real strength. Depression can make everything feel heavy, but you don't have to carry it alone. I'm here to listen without judgment. How have you been feeling lately?",
+            ProblemCategory.RELATIONSHIP_ISSUES: f"Hello, I'm {mitra_name}. Relationships can be one of the most rewarding and challenging parts of life. I'm here to listen and help you navigate whatever you're experiencing. What's been happening in your relationships that you'd like to talk about?",
             ProblemCategory.SELF_ESTEEM: f"Hi there, I'm {mitra_name}. Working on self-esteem takes courage, and I'm proud of you for taking this step. You deserve to feel good about yourself. I'm here to help you recognize your worth and build confidence. What's been affecting how you see yourself lately?",
-            ProblemCategory.GRIEF: f"Hello, I'm {mitra_name}. I'm so sorry for whatever loss you're experiencing. Grief is one of the most difficult journeys we face as humans. There's no right or wrong way to grieve, and I'm here to simply listen and support you through this. How are you doing today?",
-            ProblemCategory.TRAUMA: f"Hi, I'm {mitra_name}. Thank you for trusting me with your experience. Healing from trauma takes incredible strength, and you've already shown that by being here. I want you to know you're safe in this conversation. We can go at whatever pace feels right for you. How are you feeling right now?",
-            ProblemCategory.GENERAL: f"Hello! I'm {mitra_name}, your AI wellness companion. I'm here to listen and support you through whatever you're going through today. There's no pressure to talk about anything specific - just know that this is your space to be heard. What's on your mind?"
+            ProblemCategory.GRIEF_LOSS: f"Hello, I'm {mitra_name}. I'm so sorry for whatever loss you're experiencing. Grief is one of the most difficult journeys we face as humans. There's no right or wrong way to grieve, and I'm here to simply listen and support you through this. How are you doing today?",
+            ProblemCategory.SOCIAL_ANXIETY: f"Hi, I'm {mitra_name}. I understand social situations can feel overwhelming. You're not alone in this. I'm here to help you build confidence and find strategies to feel more comfortable in social settings. What kind of situations have been challenging for you?",
+            ProblemCategory.GENERAL_WELLNESS: f"Hello! I'm {mitra_name}, your AI wellness companion. I'm here to listen and support you through whatever you're going through today. There's no pressure to talk about anything specific - just know that this is your space to be heard. What's on your mind?"
         }
 
-        return greetings.get(problem_category, greetings[ProblemCategory.GENERAL])
+        return greetings.get(problem_category, greetings[ProblemCategory.GENERAL_WELLNESS])
 
     def get_session_info(self, session_id: str) -> Optional[VoiceSession]:
         """
@@ -596,9 +577,9 @@ CONVERSATION STYLE:
                 voice_session.total_duration_seconds = int(duration)
 
             # Close live session if active
-            if session_data["live_session"]:
+            if session_data.get("live_connection"):
                 try:
-                    await session_data["live_session"].__aexit__(None, None, None)
+                    await session_data["live_connection"].__aexit__(None, None, None)
                 except:
                     pass
 

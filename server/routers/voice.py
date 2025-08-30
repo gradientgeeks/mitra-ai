@@ -22,9 +22,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Create singleton instance of LiveVoiceService
+_live_voice_service_instance = None
+
 # Dependency injection
 def get_live_voice_service() -> LiveVoiceService:
-    return LiveVoiceService()
+    global _live_voice_service_instance
+    if _live_voice_service_instance is None:
+        _live_voice_service_instance = LiveVoiceService()
+    return _live_voice_service_instance
 
 def get_repository() -> FirestoreRepository:
     return FirestoreRepository()
@@ -116,6 +122,9 @@ async def voice_websocket_endpoint(
     voice_service: LiveVoiceService = Depends(get_live_voice_service)
 ):
     """WebSocket endpoint for real-time voice conversation."""
+    # Accept the WebSocket connection first
+    await websocket.accept()
+    
     try:
         # Extract token from query parameters
         token = None
@@ -124,28 +133,48 @@ async def voice_websocket_endpoint(
 
         # Authenticate user via token query parameter
         if not token:
+            await websocket.send_json({
+                "type": "error",
+                "data": {"message": "Authentication token required"}
+            })
             await websocket.close(code=1008, reason="Authentication token required")
             return
 
         current_user = await get_current_user_from_token(token)
+        logger.info(f"Authenticated user: {current_user}")
 
         # Verify session belongs to user
         voice_session = voice_service.get_session_info(session_id)
+        logger.info(f"Session info for {session_id}: {voice_session}")
+        if voice_session:
+            logger.info(f"Session user_id: {voice_session.user_id}, Current user: {current_user}")
+        
         if not voice_session or voice_session.user_id != current_user:
+            logger.error(f"Session verification failed - Session: {voice_session}, User: {current_user}")
+            await websocket.send_json({
+                "type": "error",
+                "data": {"message": "Session not found or access denied"}
+            })
             await websocket.close(code=1008, reason="Session not found or access denied")
             return
 
     except HTTPException as e:
+        await websocket.send_json({
+            "type": "error",
+            "data": {"message": e.detail}
+        })
         await websocket.close(code=1008, reason=e.detail)
         return
     except Exception as e:
         logger.error(f"WebSocket authentication error: {e}")
+        await websocket.send_json({
+            "type": "error",
+            "data": {"message": "Authentication failed"}
+        })
         await websocket.close(code=1008, reason="Authentication failed")
         return
 
-    # Accept connection after successful authentication
-    await websocket.accept()
-    logger.info(f"WebSocket connected for voice session {session_id}")
+    logger.info(f"WebSocket connected and authenticated for voice session {session_id}")
 
     try:
         # Start Live API conversation

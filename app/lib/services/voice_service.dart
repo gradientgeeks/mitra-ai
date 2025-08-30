@@ -272,40 +272,13 @@ class VoiceService {
     }
   }
 
-  // Initialize Live API session with proper configuration
+  // Initialize Live API session - the server handles the actual Live API connection
   Future<void> _initializeLiveSession() async {
     try {
-      final config = {
-        'type': 'initialize_live_session',
-        'data': {
-          'response_modalities': ['AUDIO'], // Audio output
-          'speech_config': {
-            'voice_config': {
-              'prebuilt_voice_config': {
-                'voice_name': _currentSession?.voiceOption ?? 'Puck'
-              }
-            },
-            'language_code': _currentSession?.language ?? 'en-US'
-          },
-          'input_audio_transcription': {}, // Enable input transcription
-          'output_audio_transcription': {}, // Enable output transcription
-          'realtime_input_config': {
-            'automatic_activity_detection': {
-              'disabled': !_vadEnabled,
-              'start_of_speech_sensitivity': 'START_SENSITIVITY_MEDIUM',
-              'end_of_speech_sensitivity': 'END_SENSITIVITY_MEDIUM',
-              'prefix_padding_ms': 300,
-              'silence_duration_ms': 1000,
-            }
-          }
-        }
-      };
-
-      _sendWebSocketMessage(config);
+      // The server establishes the Live API connection
+      // We just need to wait for the connection confirmation
       _isLiveSessionActive = true;
-      _updateConnectionState(VoiceConnectionState.connected);
-
-      print('✅ Live API session initialized');
+      print('✅ Live API voice conversation services initialized');
 
     } catch (e) {
       _updateConnectionState(VoiceConnectionState.error);
@@ -323,71 +296,67 @@ class VoiceService {
       print('📨 Live API WebSocket message: $messageType');
 
       switch (messageType) {
-        case 'session_ready':
-          _updateConnectionState(VoiceConnectionState.listening);
-          print('🎤 Live API session ready - listening for speech');
+        case 'connected':
+          _updateConnectionState(VoiceConnectionState.connected);
+          print('✅ Connected to voice session');
           break;
 
-        case 'speech_started':
-          _updateConnectionState(VoiceConnectionState.userSpeaking);
-          print('🗣️ User speech detected');
-          break;
-
-        case 'speech_ended':
-          _updateConnectionState(VoiceConnectionState.processing);
-          print('⏸️ User speech ended - processing');
-          break;
-
-        case 'input_transcription':
-          final text = messageData['text'] as String? ?? '';
-          final transcriptEvent = VoiceTranscriptEvent(
-            sessionId: _currentSession?.sessionId ?? '',
-            role: 'user',
-            text: text,
-            timestamp: DateTime.now(),
-            isPartial: messageData['is_partial'] as bool? ?? false,
-          );
-          _notifyTranscript(transcriptEvent);
-          break;
-
-        case 'audio_response_start':
-          _updateConnectionState(VoiceConnectionState.aiSpeaking);
-          print('🔊 AI started speaking');
-          break;
-
-        case 'audio_response_chunk':
-          final audioDataB64 = messageData['audio'] as String?;
-          if (audioDataB64 != null) {
-            final audioData = base64Decode(audioDataB64);
-            _notifyAudio(audioData);
+        case 'state_change':
+          final state = messageData['state'] as String?;
+          if (state == 'listening') {
+            _updateConnectionState(VoiceConnectionState.listening);
+          } else if (state == 'processing') {
+            _updateConnectionState(VoiceConnectionState.processing);
+          } else if (state == 'talking') {
+            _updateConnectionState(VoiceConnectionState.aiSpeaking);
           }
           break;
 
-        case 'audio_response_end':
-          _updateConnectionState(VoiceConnectionState.listening);
-          print('🔇 AI finished speaking - back to listening');
-          break;
-
-        case 'output_transcription':
+        case 'transcript':
+          final role = messageData['role'] as String? ?? '';
           final text = messageData['text'] as String? ?? '';
+          final isPartial = messageData['is_partial'] as bool? ?? false;
           final transcriptEvent = VoiceTranscriptEvent(
             sessionId: _currentSession?.sessionId ?? '',
-            role: 'assistant',
+            role: role,
             text: text,
             timestamp: DateTime.now(),
-            isPartial: messageData['is_partial'] as bool? ?? false,
+            isPartial: isPartial,
           );
           _notifyTranscript(transcriptEvent);
+          break;
+
+        case 'audio_chunk':
+          final audioDataB64 = messageData['data'] as String?;
+          if (audioDataB64 != null) {
+            final audioData = base64Decode(audioDataB64);
+            _notifyAudio(audioData);
+            _updateConnectionState(VoiceConnectionState.aiSpeaking);
+          }
           break;
 
         case 'interruption':
           final interruptionEvent = VoiceInterruptionEvent(
-            sessionId: _currentSession?.sessionId ?? '',
-            interruptedAt: DateTime.now(),
-            reason: messageData['reason'] as String? ?? 'speech_detected',
+            sessionId: messageData['session_id'] as String? ?? '',
+            interruptedAt: DateTime.parse(messageData['interrupted_at'] as String? ?? DateTime.now().toIso8601String()),
+            reason: messageData['reason'] as String? ?? 'user_speech_detected',
           );
           _notifyInterruption(interruptionEvent);
           _updateConnectionState(VoiceConnectionState.userSpeaking);
+          break;
+
+        case 'speaking_state':
+          final isSpeaking = messageData['is_speaking'] as bool? ?? false;
+          if (isSpeaking) {
+            _updateConnectionState(VoiceConnectionState.userSpeaking);
+          } else {
+            _updateConnectionState(VoiceConnectionState.listening);
+          }
+          break;
+
+        case 'usage':
+          // Handle token usage info if needed
+          print('📊 Token usage: ${messageData['total_tokens']} tokens');
           break;
 
         case 'error':
@@ -400,8 +369,12 @@ class VoiceService {
           _updateConnectionState(VoiceConnectionState.disconnected);
           break;
 
+        case 'pong':
+          // Handle keepalive pong response
+          break;
+
         default:
-          print('⚠️ Unknown Live API message type: $messageType');
+          print('⚠️ Unknown message type: $messageType');
           break;
       }
     } catch (e) {
