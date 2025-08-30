@@ -43,14 +43,27 @@ def get_repository() -> FirestoreRepository:
     return FirestoreRepository()
 
 async def get_current_user(authorization: str = Header(None)) -> str:
-    """Extract user ID from authorization header."""
+    """Extract user ID from Firebase ID token in authorization header."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
     
-    # Extract token and verify (mock implementation)
-    token = authorization.split(" ")[1]
-    # In production, verify Firebase ID token here
-    return f"user_{hash(token) % 10000}"  # Mock user ID
+    try:
+        # Extract token and verify with Firebase
+        token = authorization.split(" ")[1]
+
+        # Initialize Firebase service to verify token
+        from services.firebase_service import FirebaseService
+        firebase_service = FirebaseService()
+
+        # Verify ID token and extract claims
+        decoded_token = await firebase_service.verify_id_token(token)
+
+        # Return the user ID from the verified token
+        return decoded_token.get('uid')
+
+    except Exception as e:
+        logger.error(f"Token verification failed: {e}")
+        raise HTTPException(status_code=401, detail="Invalid or expired authorization token")
 
 
 @router.post("/text", response_model=ChatResponse)
@@ -138,7 +151,7 @@ async def send_text_message(
                 timestamp=datetime.utcnow()
             )
         
-        # Generate AI response with personalization
+        # Generate AI response with personalization and MCP resources
         all_messages = session.messages + [user_message]
         
         # Use personalized response generation
@@ -155,6 +168,31 @@ async def send_text_message(
                 include_grounding=request.include_grounding
             )
         
+        # Generate contextual resources using MCP integration
+        generated_resources = []
+        try:
+            from services.mcp_integration_service import MCPIntegrationService
+            mcp_service = MCPIntegrationService()
+
+            # Extract recent user messages for context
+            recent_user_messages = [
+                msg for msg in all_messages[-5:]
+                if msg.role == MessageRole.USER and msg.content.text
+            ]
+
+            if recent_user_messages and session.problem_category:
+                session_context = " ".join([msg.content.text for msg in recent_user_messages])
+
+                # Generate tech-aware resources
+                generated_resources = await mcp_service.generate_tech_resources_for_chat(
+                    session_context=session_context,
+                    user_profile=user_profile,
+                    problem_category=session.problem_category
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to generate MCP resources: {e}")
+
         # Generate image if requested
         generated_image = None
         if request.generate_image and "image" in request.message.lower():
@@ -178,7 +216,8 @@ async def send_text_message(
             safety_status=SafetyStatus.SAFE,
             metadata={
                 "grounding_sources": [source.dict() for source in grounding_sources] if grounding_sources else [],
-                "thinking": thinking_text
+                "thinking": thinking_text,
+                "generated_resources": [resource.dict() for resource in generated_resources] if generated_resources else []
             }
         )
         

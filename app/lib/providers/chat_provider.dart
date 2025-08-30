@@ -137,8 +137,26 @@ class ChatController extends StateNotifier<AsyncValue<ChatState>> {
     final currentState = state.value;
     if (currentState == null) return;
 
+    // Create user message ID for tracking optimistic updates
+    final optimisticMessageId = DateTime.now().millisecondsSinceEpoch.toString();
+
     try {
-      state = AsyncValue.data(currentState.copyWith(isLoading: true));
+      // Create user message immediately for optimistic UI
+      final userMessage = ChatMessage(
+        id: optimisticMessageId,
+        role: 'user',
+        type: 'text',
+        content: MessageContent(text: message),
+        timestamp: DateTime.now(), // Local time for immediate display
+        safetyStatus: 'safe',
+      );
+
+      // Add user message to UI immediately (optimistic update)
+      final updatedMessages = [...currentState.messages, userMessage];
+      state = AsyncValue.data(currentState.copyWith(
+        messages: updatedMessages,
+        isLoading: true,
+      ));
 
       final response = await _apiService.sendTextMessage(
         message: message,
@@ -146,42 +164,45 @@ class ChatController extends StateNotifier<AsyncValue<ChatState>> {
         problemCategory: currentState.problemCategory,
       );
 
-      // Create user message
-      final userMessage = ChatMessage(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      // Replace the optimistic user message with properly formatted one
+      // and add assistant message with current local time
+      final serverUserMessage = ChatMessage(
+        id: optimisticMessageId, // Keep same ID for consistency
         role: 'user',
         type: 'text',
         content: MessageContent(text: message),
-        timestamp: DateTime.now(),
+        timestamp: DateTime.now(), // Keep local time for user messages
         safetyStatus: 'safe',
       );
 
-      // Create assistant message
       final assistantMessage = ChatMessage(
         id: response.messageId,
         role: 'assistant',
         type: 'text',
         content: MessageContent(text: response.responseText),
-        timestamp: response.timestamp,
+        timestamp: DateTime.now(), // Use current local time instead of server time
         safetyStatus: response.safetyStatus,
         metadata: response.thinkingText != null
             ? {'thinking': response.thinkingText}
             : null,
       );
 
-      final updatedMessages = [
-        ...currentState.messages,
-        userMessage,
+      final finalMessages = [
+        ...currentState.messages.where((m) => m.id != optimisticMessageId), // Remove optimistic message
+        serverUserMessage,
         assistantMessage,
       ];
 
       state = AsyncValue.data(currentState.copyWith(
         currentSessionId: response.sessionId,
-        messages: updatedMessages,
+        messages: finalMessages,
         isLoading: false,
       ));
     } catch (e) {
+      // Remove optimistic user message on error and show error
+      final errorMessages = currentState.messages.where((m) => m.id != optimisticMessageId).toList();
       state = AsyncValue.data(currentState.copyWith(
+        messages: errorMessages,
         isLoading: false,
         error: 'Failed to send message: $e',
       ));

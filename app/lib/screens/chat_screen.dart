@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../models/user_model.dart';
 import '../models/chat_models.dart';
 import '../widgets/profile_avatar.dart';
+import '../widgets/markdown_message.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -401,32 +404,63 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Use markdown rendering for assistant messages, plain text for user
                   if (message.content.text != null)
-                    Text(
-                      message.content.text!,
-                      style: TextStyle(
-                        color: const Color(0xFF303030),
-                        fontSize: 16,
-                        height: 1.3,
+                    isUser
+                        ? Text(
+                            message.content.text!,
+                            style: const TextStyle(
+                              color: Color(0xFF303030),
+                              fontSize: 16,
+                              height: 1.3,
+                            ),
+                          )
+                        : MarkdownMessage(
+                            markdown: message.content.text!,
+                            isUser: isUser,
+                          ),
+
+                  // Show thinking text for debugging (only in development)
+                  if (!isUser && message.metadata?['thinking'] != null) ...[
+                    const SizedBox(height: 8),
+                    ExpansionTile(
+                      title: const Text(
+                        'Thought process',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Text(
+                            message.metadata!['thinking'],
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                  ],
+
                   const SizedBox(height: 4),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         _formatTimestamp(message.timestamp),
-                        style: TextStyle(
-                          color: const Color(0xFF999999),
+                        style: const TextStyle(
+                          color: Color(0xFF999999),
                           fontSize: 12,
                         ),
                       ),
                       if (isUser) ...[
                         const SizedBox(width: 4),
-                        Icon(
+                        const Icon(
                           Icons.done_all,
                           size: 16,
-                          color: const Color(0xFF4FC3F7), // Read receipt blue
+                          color: Color(0xFF4FC3F7), // Read receipt blue
                         ),
                       ],
                     ],
@@ -575,16 +609,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   String _formatTimestamp(DateTime timestamp) {
     final now = DateTime.now();
-    final difference = now.difference(timestamp);
+    final localTimestamp = timestamp.toLocal(); // Ensure we're working with local time
+    final difference = now.difference(localTimestamp);
 
-    if (difference.inMinutes < 1) {
+    if (difference.inSeconds < 30) {
       return 'Just now';
-    } else if (difference.inHours < 1) {
+    } else if (difference.inMinutes < 1) {
+      return 'Now';
+    } else if (difference.inMinutes < 60) {
       return '${difference.inMinutes}m ago';
-    } else if (difference.inDays < 1) {
+    } else if (difference.inHours < 24) {
       return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
     } else {
-      return '${timestamp.day}/${timestamp.month}';
+      // Use a more readable date format for older messages
+      return DateFormat('MMM d').format(localTimestamp);
     }
   }
 }

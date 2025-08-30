@@ -78,7 +78,7 @@ class ChatRepository(BaseRepository):
             session.updated_at = datetime.utcnow()
             
             # Save updated session
-            session_data = session.dict()
+            session_data = session.model_dump()
             session_data["created_at"] = session.created_at
             session_data["updated_at"] = session.updated_at
             
@@ -108,7 +108,7 @@ class ChatRepository(BaseRepository):
             session.context_summary = summary
             session.updated_at = datetime.utcnow()
             
-            session_data = session.dict()
+            session_data = session.model_dump()
             session_data["created_at"] = session.created_at
             session_data["updated_at"] = session.updated_at
             
@@ -180,4 +180,3 @@ class ChatRepository(BaseRepository):
                     converted_data[field] = dt.datetime.fromtimestamp(timestamp.seconds)
 
         return converted_data
-

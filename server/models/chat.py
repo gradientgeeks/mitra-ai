@@ -9,6 +9,8 @@ from enum import Enum
 
 # Import problem categories from user models
 from models.user import ProblemCategory
+# Import resource types from wellness models
+from models.wellness import ResourceType, GeneratedResource
 
 
 class MessageRole(str, Enum):
@@ -148,31 +150,6 @@ class CrisisResponse(BaseModel):
     immediate_actions: List[str]
     timestamp: datetime
 
-
-class ResourceType(str, Enum):
-    """Types of generated resources."""
-    MEDITATION = "meditation"
-    BREATHING_EXERCISE = "breathing_exercise"
-    COPING_STRATEGIES = "coping_strategies"
-    AFFIRMATIONS = "affirmations"
-    ARTICLES = "articles"
-    VIDEOS = "videos"
-    WORKSHEETS = "worksheets"
-    EMERGENCY_CONTACTS = "emergency_contacts"
-
-
-class GeneratedResource(BaseModel):
-    """Resource generated based on session content."""
-    id: str
-    type: ResourceType
-    title: str
-    description: str
-    content: str
-    duration_minutes: Optional[int] = None
-    difficulty_level: str = Field("beginner", pattern="^(beginner|intermediate|advanced)$")
-    tags: List[str] = []
-    created_at: datetime
-    problem_category: ProblemCategory
 
 
 class SessionResourcesRequest(BaseModel):

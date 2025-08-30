@@ -905,3 +905,4 @@ class FirebaseService:
         except Exception as e:
             logger.error(f"Error listing files in {directory_path}: {e}")
             return []
+

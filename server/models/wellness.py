@@ -7,6 +7,9 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from enum import Enum
 
+# Import problem categories from user models
+from models.user import ProblemCategory
+
 
 class MoodLevel(int, Enum):
     """Mood levels from 1-10."""
@@ -200,3 +203,29 @@ class WellnessDashboard(BaseModel):
     insights: List[WellnessInsight] = []
     streak_days: int = 0
     total_sessions: int = 0
+
+
+class ResourceType(str, Enum):
+    """Types of generated resources."""
+    MEDITATION = "meditation"
+    BREATHING_EXERCISE = "breathing_exercise"
+    COPING_STRATEGIES = "coping_strategies"
+    AFFIRMATIONS = "affirmations"
+    ARTICLES = "articles"
+    VIDEOS = "videos"
+    WORKSHEETS = "worksheets"
+    EMERGENCY_CONTACTS = "emergency_contacts"
+
+
+class GeneratedResource(BaseModel):
+    """Resource generated based on session content."""
+    id: str
+    type: ResourceType
+    title: str
+    description: str
+    content: str
+    duration_minutes: Optional[int] = None
+    difficulty_level: str = Field("beginner", pattern="^(beginner|intermediate|advanced)$")
+    tags: List[str] = []
+    created_at: datetime
+    problem_category: ProblemCategory
