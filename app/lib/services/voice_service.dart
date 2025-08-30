@@ -4,6 +4,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as status;
 import '../models/user_model.dart';
 import 'api_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // Voice session models
 class VoiceSession {
@@ -227,10 +228,28 @@ class VoiceService {
   // Connect to WebSocket for Live API
   Future<void> _connectWebSocket(String websocketUrl) async {
     try {
+      // Get authentication token
+      String? authToken;
+      try {
+        // Get current Firebase user and token
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          authToken = await user.getIdToken();
+        }
+      } catch (e) {
+        print('⚠️ Failed to get auth token: $e');
+      }
+
       // Convert HTTP URL to WebSocket URL
       final wsUrl = websocketUrl.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://');
-      final baseUrl = _apiService.baseUrl.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://');
-      final fullUrl = '$baseUrl$wsUrl';
+      final baseUrl = ApiService.baseUrl.replaceFirst('http://', 'ws://').replaceFirst('https://', 'wss://');
+
+      // Add authentication token as query parameter
+      var fullUrl = '$baseUrl$wsUrl';
+      if (authToken != null) {
+        final separator = fullUrl.contains('?') ? '&' : '?';
+        fullUrl = '$fullUrl${separator}token=$authToken';
+      }
 
       print('🔌 Connecting to Live API WebSocket: $fullUrl');
 
@@ -529,6 +548,7 @@ class VoiceService {
   }
 
   void _notifyError(String error) {
+    print('❌ Voice service error: $error');
     for (final listener in _errorListeners) {
       try {
         listener(error);
@@ -536,16 +556,6 @@ class VoiceService {
         print('❌ Error in error listener: $e');
       }
     }
-  }
-
-  // Get session info
-  VoiceSession? getSessionInfo(String sessionId) {
-    return _currentSession?.sessionId == sessionId ? _currentSession : null;
-  }
-
-  // Get active sessions count
-  int getActiveSessionsCount() {
-    return _isLiveSessionActive ? 1 : 0;
   }
 
   // Dispose and cleanup

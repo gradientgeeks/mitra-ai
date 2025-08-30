@@ -2,8 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:typed_data';
 import '../services/voice_service.dart';
 import '../services/audio_recorder_service.dart';
-import '../services/api_service.dart';
 import '../models/user_model.dart';
+import 'auth_provider.dart';
 
 // Voice service provider
 final voiceServiceProvider = Provider<VoiceService>((ref) {

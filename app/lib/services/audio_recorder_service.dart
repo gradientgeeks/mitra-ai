@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 
 enum AudioRecorderState {
   stopped,
@@ -32,7 +34,7 @@ class AudioRecorderService {
   // Getters
   AudioRecorderState get state => _state;
   bool get isStreaming => _state == AudioRecorderState.streaming;
-  bool get isInitialized => _recorder?.isInited == true;
+  bool get isInitialized => _recorder != null;
 
   // Initialize audio services for Live API
   Future<bool> initialize() async {
@@ -191,12 +193,24 @@ class AudioRecorderService {
         await _player!.stopPlayer();
       }
 
+      // Create a temporary file for the audio data since flutter_sound
+      // doesn't support direct buffer playback in recent versions
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/temp_audio_${DateTime.now().millisecondsSinceEpoch}.wav');
+
+      // Write audio data to temporary file
+      await tempFile.writeAsBytes(audioData);
+
       // Play audio from Live API (24kHz output)
-      await _player!.startPlayerFromBuffer(
-        audioData,
+      await _player!.startPlayer(
+        fromURI: tempFile.path,
         codec: Codec.pcm16,
         sampleRate: 24000, // Live API outputs at 24kHz
         numChannels: 1,
+        whenFinished: () {
+          // Clean up temporary file when playback finishes
+          tempFile.deleteSync();
+        },
       );
 
       print('🔊 Playing Live API audio (${audioData.length} bytes)');
@@ -226,9 +240,10 @@ class AudioRecorderService {
   Future<double> getAudioLevel() async {
     try {
       if (_recorder?.isRecording == true) {
-        // Get current recording amplitude for visual feedback
-        final level = await _recorder!.getRecordAmplitude();
-        return level.current ?? 0.0;
+        // Note: getRecordAmplitude is not available in newer versions of flutter_sound
+        // For now, return a simulated audio level based on streaming state
+        // In a real implementation, you would need to calculate amplitude from the audio stream
+        return _isStreamingActive ? 0.5 : 0.0;
       }
       return 0.0;
     } catch (e) {

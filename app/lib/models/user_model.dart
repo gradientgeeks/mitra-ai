@@ -31,7 +31,39 @@ enum VoiceOption {
   charon,
   kore,
   fenrir,
-  aoede,
+  aoede;
+
+  // Add value getter for backward compatibility
+  String get value {
+    switch (this) {
+      case VoiceOption.puck:
+        return 'Puck';
+      case VoiceOption.charon:
+        return 'Charon';
+      case VoiceOption.kore:
+        return 'Kore';
+      case VoiceOption.fenrir:
+        return 'Fenrir';
+      case VoiceOption.aoede:
+        return 'Aoede';
+    }
+  }
+
+  // Add display name getter
+  String get displayName {
+    switch (this) {
+      case VoiceOption.puck:
+        return 'Puck (Upbeat)';
+      case VoiceOption.charon:
+        return 'Charon (Informative)';
+      case VoiceOption.kore:
+        return 'Kore (Firm)';
+      case VoiceOption.fenrir:
+        return 'Fenrir (Excitable)';
+      case VoiceOption.aoede:
+        return 'Aoede (Breezy)';
+    }
+  }
 }
 
 enum ProblemCategory {

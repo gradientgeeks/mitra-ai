@@ -69,6 +69,54 @@ class ApiService {
     }
   }
 
+  // Generic HTTP methods for internal use
+  Future<Map<String, dynamic>> get(String endpoint, {Map<String, String>? queryParams}) async {
+    try {
+      final uri = Uri.parse('$baseUrl$endpoint').replace(queryParameters: queryParams);
+      final response = await _client.get(uri, headers: _headers);
+      return _handleResponse(response);
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> post(String endpoint, {Map<String, dynamic>? data}) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: _headers,
+        body: data != null ? json.encode(data) : null,
+      );
+      return _handleResponse(response);
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> put(String endpoint, {Map<String, dynamic>? data}) async {
+    try {
+      final response = await _client.put(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: _headers,
+        body: data != null ? json.encode(data) : null,
+      );
+      return _handleResponse(response);
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<void> delete(String endpoint) async {
+    try {
+      await _client.delete(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: _headers,
+      );
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   // Create anonymous user
   Future<UserModel> createAnonymousUser({UserPreferences? preferences}) async {
     try {
@@ -697,4 +745,3 @@ class VoiceOptionItem {
     );
   }
 }
-

@@ -8,6 +8,7 @@ import asyncio
 import uuid
 import base64
 from typing import Optional
+from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, Header
 from fastapi.responses import JSONResponse
@@ -52,6 +53,24 @@ async def get_current_user(authorization: str = Header(None)) -> str:
         raise HTTPException(status_code=401, detail="Invalid or expired authorization token")
 
 
+async def get_current_user_from_token(token: str) -> str:
+    """Extract user ID from Firebase ID token."""
+    try:
+        # Initialize Firebase service to verify token
+        from services.firebase_service import FirebaseService
+        firebase_service = FirebaseService()
+
+        # Verify ID token and extract claims
+        decoded_token = await firebase_service.verify_id_token(token)
+
+        # Return the user ID from the verified token
+        return decoded_token.get('uid')
+
+    except Exception as e:
+        logger.error(f"Token verification failed: {e}")
+        raise HTTPException(status_code=401, detail="Invalid or expired authorization token")
+
+
 @router.post("/voice/start", response_model=VoiceSessionResponse)
 async def start_voice_session(
     request: VoiceSessionRequest,
@@ -76,7 +95,7 @@ async def start_voice_session(
         )
 
         # Generate WebSocket URL
-        websocket_url = f"/api/v1/voice/connect/{voice_session.session_id}"
+        websocket_url = f"/voice/connect/{voice_session.session_id}"
 
         return VoiceSessionResponse(
             session_id=voice_session.session_id,
@@ -97,6 +116,34 @@ async def voice_websocket_endpoint(
     voice_service: LiveVoiceService = Depends(get_live_voice_service)
 ):
     """WebSocket endpoint for real-time voice conversation."""
+    try:
+        # Extract token from query parameters
+        token = None
+        query_params = dict(websocket.query_params)
+        token = query_params.get("token")
+
+        # Authenticate user via token query parameter
+        if not token:
+            await websocket.close(code=1008, reason="Authentication token required")
+            return
+
+        current_user = await get_current_user_from_token(token)
+
+        # Verify session belongs to user
+        voice_session = voice_service.get_session_info(session_id)
+        if not voice_session or voice_session.user_id != current_user:
+            await websocket.close(code=1008, reason="Session not found or access denied")
+            return
+
+    except HTTPException as e:
+        await websocket.close(code=1008, reason=e.detail)
+        return
+    except Exception as e:
+        logger.error(f"WebSocket authentication error: {e}")
+        await websocket.close(code=1008, reason="Authentication failed")
+        return
+
+    # Accept connection after successful authentication
     await websocket.accept()
     logger.info(f"WebSocket connected for voice session {session_id}")
 
@@ -160,7 +207,7 @@ async def _handle_websocket_message(
     voice_service: LiveVoiceService
 ):
     """
-    Handle incoming WebSocket messages.
+    Handle incoming WebSocket messages for continuous phone call-like conversation.
 
     Args:
         websocket: WebSocket connection
@@ -172,15 +219,26 @@ async def _handle_websocket_message(
         message_type = message.get("type")
         data = message.get("data", {})
 
-        if message_type == "audio":
-            # Handle audio input from client
+        if message_type == "audio_stream":
+            # Handle continuous audio streaming from client
             audio_data_b64 = data.get("audio")
             if audio_data_b64:
-                # Decode base64 audio data
-                audio_data = base64.b64decode(audio_data_b64)
+                try:
+                    # Decode base64 audio data
+                    audio_data = base64.b64decode(audio_data_b64)
 
-                # Send to Live API
-                await voice_service.send_audio_input(session_id, audio_data)
+                    # Send to Live API for real-time processing
+                    await voice_service.send_audio_input(
+                        session_id,
+                        audio_data,
+                        mime_type=data.get("mime_type", "audio/pcm;rate=16000")
+                    )
+                except Exception as e:
+                    logger.error(f"Error processing audio stream: {e}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "data": {"message": "Error processing audio stream"}
+                    })
             else:
                 await websocket.send_json({
                     "type": "error",
@@ -188,27 +246,51 @@ async def _handle_websocket_message(
                 })
 
         elif message_type == "audio_end":
-            # Handle end of audio stream
+            # Handle end of audio stream - signal to Live API that user stopped speaking
+            await voice_service.send_audio_stream_end(session_id)
+
+        elif message_type == "start_speaking":
+            # Client indicates user started speaking (for UI state management)
             session_data = voice_service.active_sessions.get(session_id)
-            if session_data and session_data["live_session"]:
-                # Send audio stream end to Live API
-                await session_data["live_session"].send_realtime_input(audio_stream_end=True)
+            if session_data:
+                session_data["is_speaking"] = True
+                await websocket.send_json({
+                    "type": "speaking_state",
+                    "data": {"is_speaking": True, "timestamp": datetime.utcnow().isoformat()}
+                })
+
+        elif message_type == "stop_speaking":
+            # Client indicates user stopped speaking
+            session_data = voice_service.active_sessions.get(session_id)
+            if session_data:
+                session_data["is_speaking"] = False
+                await websocket.send_json({
+                    "type": "speaking_state",
+                    "data": {"is_speaking": False, "timestamp": datetime.utcnow().isoformat()}
+                })
 
         elif message_type == "ping":
             # Handle ping/pong for connection health
             await websocket.send_json({
                 "type": "pong",
-                "data": {"timestamp": data.get("timestamp")}
+                "data": {"timestamp": data.get("timestamp", datetime.utcnow().isoformat())}
+            })
+
+        elif message_type == "get_transcript":
+            # Send current session transcript
+            transcript = await voice_service.get_session_transcript(session_id)
+            await websocket.send_json({
+                "type": "transcript_history",
+                "data": {"transcript": transcript}
             })
 
         elif message_type == "end_session":
-            # Handle session termination request
+            # Client wants to end the voice session
             await voice_service.end_voice_session(session_id)
             await websocket.send_json({
                 "type": "session_ended",
-                "data": {"session_id": session_id}
+                "data": {"message": "Voice session ended", "timestamp": datetime.utcnow().isoformat()}
             })
-            await websocket.close()
 
         else:
             await websocket.send_json({

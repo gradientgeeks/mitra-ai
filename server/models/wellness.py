@@ -51,6 +51,16 @@ class MeditationType(str, Enum):
     STRESS_RELIEF = "stress_relief"
 
 
+class JournalType(str, Enum):
+    """Types of journal entries."""
+    DAILY_REFLECTION = "daily_reflection"
+    GRATITUDE = "gratitude"
+    GOALS = "goals"
+    CHALLENGES = "challenges"
+    ACHIEVEMENTS = "achievements"
+    FREE_FORM = "free_form"
+
+
 class ResourceType(str, Enum):
     """Types of wellness resources."""
     MEDITATION = "meditation"
@@ -244,3 +254,81 @@ class VoiceTranscriptEvent(BaseModel):
     text: str
     timestamp: datetime
     is_partial: bool = False  # For streaming transcription
+
+
+# Additional missing classes that are imported in __init__.py
+class UpdateMoodEntryRequest(BaseModel):
+    """Request to update mood entry."""
+    mood_level: Optional[MoodLevel] = None
+    emotion_tags: Optional[List[EmotionTag]] = None
+    notes: Optional[str] = Field(None, max_length=500)
+    stress_level: Optional[int] = Field(None, ge=1, le=10)
+    sleep_hours: Optional[float] = Field(None, ge=0, le=24)
+    energy_level: Optional[int] = Field(None, ge=1, le=10)
+
+
+class UpdateJournalEntryRequest(BaseModel):
+    """Request to update journal entry."""
+    title: Optional[str] = Field(None, max_length=100)
+    content: Optional[str] = Field(None, min_length=1, max_length=5000)
+    mood_before: Optional[MoodLevel] = None
+    mood_after: Optional[MoodLevel] = None
+    tags: Optional[List[str]] = None
+    is_private: Optional[bool] = None
+
+
+class MoodAnalysis(BaseModel):
+    """Analysis of mood patterns."""
+    user_id: str
+    period_start: date
+    period_end: date
+    average_mood: float
+    mood_trend: str  # "improving", "declining", "stable"
+    most_common_emotions: List[str]
+    insights: List[str]
+    recommendations: List[str]
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class GenerateMeditationRequest(BaseModel):
+    """Request to generate meditation content."""
+    type: MeditationType
+    duration_minutes: int = Field(..., ge=1, le=120)
+    problem_category: Optional[ProblemCategory] = None
+    user_preferences: Optional[Dict[str, Any]] = None
+
+
+class MeditationResponse(BaseModel):
+    """Response with meditation content."""
+    id: str
+    type: MeditationType
+    title: str
+    script: str
+    duration_minutes: int
+    instructions: List[str]
+    background_music_url: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WellnessInsight(BaseModel):
+    """Individual wellness insight."""
+    insight_type: str
+    title: str
+    description: str
+    data_points: Dict[str, Any]
+    recommendations: List[str]
+    confidence_score: float = Field(..., ge=0.0, le=1.0)
+
+
+class WellnessDashboard(BaseModel):
+    """Complete wellness dashboard data."""
+    user_id: str
+    period_start: date
+    period_end: date
+    mood_summary: Optional[Dict[str, Any]] = None
+    journal_summary: Optional[Dict[str, Any]] = None
+    meditation_summary: Optional[Dict[str, Any]] = None
+    insights: List[WellnessInsight] = Field(default_factory=list)
+    goals_progress: List[Dict[str, Any]] = Field(default_factory=list)
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
