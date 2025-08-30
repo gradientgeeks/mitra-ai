@@ -1,16 +1,37 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
 import '../models/chat_models.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:8000/api/v1'; // Update this with your backend URL
+  // Platform-aware base URL configuration
+  static String get baseUrl {
+    if (kIsWeb) {
+      // For Flutter Web, use localhost
+      return 'http://localhost:8000/api/v1';
+    } else if (Platform.isAndroid) {
+      // For Android, use the machine's local IP address
+      return 'http://192.168.94.12:8000/api/v1';
+    } else if (Platform.isIOS) {
+      // For iOS Simulator, use localhost; for device, use IP
+      return 'http://192.168.94.12:8000/api/v1';
+    } else {
+      // Default fallback
+      return 'http://localhost:8000/api/v1';
+    }
+  }
   
-  // For development, you might want to use:
+  // For production, override with:
   // static const String baseUrl = 'https://your-backend-domain.com/api/v1';
   
   final http.Client _client = http.Client();
   String? _authToken;
+
+  ApiService() {
+    print('🌐 API Service initialized with baseUrl: $baseUrl');
+  }
 
   // Set the authentication token
   void setAuthToken(String token) {

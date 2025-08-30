@@ -101,44 +101,81 @@ class AuthController extends StateNotifier<AsyncValue<AuthState>> {
   void _init() {
     _firebaseService.authStateChanges.listen((firebaseUser) async {
       try {
+        print('Auth state changed: ${firebaseUser?.uid ?? 'null'}');
         state = AsyncValue.data(state.value?.copyWith(
           firebaseUser: firebaseUser,
           isLoading: true,
         ) ?? AuthState(firebaseUser: firebaseUser, isLoading: true));
 
         if (firebaseUser != null) {
+          print('Getting ID token...');
           // Set auth token and try to get backend user
           final token = await firebaseUser.getIdToken();
           if (token != null) {
+            print('ID token obtained');
             _apiService.setAuthToken(token);
 
             try {
+              print('Attempting to get user profile from backend...');
               final backendUser = await _apiService.getUserProfile();
+              print('Backend user profile retrieved successfully');
               state = AsyncValue.data(AuthState(
                 firebaseUser: firebaseUser,
                 backendUser: backendUser,
                 isLoading: false,
               ));
             } catch (e) {
+              print(' Failed to get user profile: $e');
               // User doesn't exist in backend yet, create anonymous user
               try {
+                print(' Attempting to create anonymous user in backend...');
                 final backendUser = await _apiService.createAnonymousUser();
+                print(' Anonymous user created successfully');
                 state = AsyncValue.data(AuthState(
                   firebaseUser: firebaseUser,
                   backendUser: backendUser,
                   isLoading: false,
                 ));
               } catch (createError) {
-                // If backend user creation fails, still keep Firebase user
-                state = AsyncValue.data(AuthState(
-                  firebaseUser: firebaseUser,
-                  backendUser: null,
-                  isLoading: false,
-                  error: 'Failed to create backend user: $createError',
-                ));
+                print('❌ Failed to create backend user: $createError');
+                
+                // Check if it's a network/connection error
+                if (createError.toString().contains('Connection') || 
+                    createError.toString().contains('Failed host lookup') ||
+                    createError.toString().contains('SocketException') ||
+                    createError.toString().contains('XMLHttpRequest')) {
+                  
+                  print('🔧 Network error detected - creating temporary offline user');
+                  // Create a temporary offline user for development
+                  final offlineUser = UserModel(
+                    uid: firebaseUser.uid,
+                    provider: UserProvider.anonymous,
+                    isAnonymous: true,
+                    status: UserStatus.active,
+                    createdAt: DateTime.now(),
+                    lastLogin: DateTime.now(),
+                    preferences: const UserPreferences(),
+                    onboardingCompleted: false,
+                  );
+                  
+                  state = AsyncValue.data(AuthState(
+                    firebaseUser: firebaseUser,
+                    backendUser: offlineUser,
+                    isLoading: false,
+                  ));
+                } else {
+                  // For other errors, keep the Firebase user but show error
+                  state = AsyncValue.data(AuthState(
+                    firebaseUser: firebaseUser,
+                    backendUser: null,
+                    isLoading: false,
+                    error: 'Failed to create backend user: $createError',
+                  ));
+                }
               }
             }
           } else {
+            print(' Failed to get ID token');
             state = AsyncValue.data(AuthState(
               firebaseUser: firebaseUser,
               backendUser: null,
@@ -147,10 +184,12 @@ class AuthController extends StateNotifier<AsyncValue<AuthState>> {
             ));
           }
         } else {
+          print(' User signed out');
           _apiService.clearAuthToken();
           state = const AsyncValue.data(AuthState());
         }
       } catch (e, stackTrace) {
+        print(' Auth state error: $e');
         state = AsyncValue.error(e, stackTrace);
       }
     });
@@ -158,35 +197,70 @@ class AuthController extends StateNotifier<AsyncValue<AuthState>> {
 
   Future<void> signInAnonymously() async {
     try {
+      print(' Starting anonymous sign-in process...');
       state = AsyncValue.data(state.value?.copyWith(isLoading: true) ?? 
           const AuthState(isLoading: true));
 
       // Sign in with Firebase Auth
+      print(' Calling Firebase signInAnonymously...');
       final result = await _firebaseService.signInAnonymously();
       if (result?.user != null) {
+        print(' Firebase sign-in successful');
         final firebaseUser = result!.user!;
         final token = await firebaseUser.getIdToken();
         if (token != null) {
+          print(' Setting auth token...');
           _apiService.setAuthToken(token);
 
           // Create user in backend
           try {
+            print(' Creating user in backend...');
             final backendUser = await _apiService.createAnonymousUser();
+            print(' Backend user created successfully');
             state = AsyncValue.data(AuthState(
               firebaseUser: firebaseUser,
               backendUser: backendUser,
               isLoading: false,
             ));
           } catch (e) {
-            // If backend user creation fails, still keep Firebase user
-            state = AsyncValue.data(AuthState(
-              firebaseUser: firebaseUser,
-              backendUser: null,
-              isLoading: false,
-              error: 'Failed to create backend user: $e',
-            ));
+            print('❌ Backend user creation failed: $e');
+            
+            // Check if it's a network/connection error  
+            if (e.toString().contains('Connection') || 
+                e.toString().contains('Failed host lookup') ||
+                e.toString().contains('SocketException') ||
+                e.toString().contains('XMLHttpRequest')) {
+              
+              print('🔧 Network error detected - creating temporary offline user');
+              // Create a temporary offline user for development
+              final offlineUser = UserModel(
+                uid: firebaseUser.uid,
+                provider: UserProvider.anonymous,
+                isAnonymous: true,
+                status: UserStatus.active,
+                createdAt: DateTime.now(),
+                lastLogin: DateTime.now(),
+                preferences: const UserPreferences(),
+                onboardingCompleted: false,
+              );
+              
+              state = AsyncValue.data(AuthState(
+                firebaseUser: firebaseUser,
+                backendUser: offlineUser,
+                isLoading: false,
+              ));
+            } else {
+              // For other errors, keep the Firebase user but show error
+              state = AsyncValue.data(AuthState(
+                firebaseUser: firebaseUser,
+                backendUser: null,
+                isLoading: false,
+                error: 'Failed to create backend user: $e',
+              ));
+            }
           }
         } else {
+          print(' Failed to get Firebase ID token');
           state = AsyncValue.data(AuthState(
             firebaseUser: firebaseUser,
             backendUser: null,
@@ -195,12 +269,14 @@ class AuthController extends StateNotifier<AsyncValue<AuthState>> {
           ));
         }
       } else {
+        print(' Firebase sign-in failed');
         state = AsyncValue.data(const AuthState(
           isLoading: false,
           error: 'Failed to sign in anonymously',
         ));
       }
     } catch (e, stackTrace) {
+      print(' Sign-in error: $e');
       state = AsyncValue.error(e, stackTrace);
     }
   }
