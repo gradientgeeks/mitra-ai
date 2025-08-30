@@ -156,6 +156,27 @@ class CreateMoodEntryRequest(BaseModel):
     energy_level: Optional[int] = Field(None, ge=1, le=10)
 
 
+class UpdateMoodEntryRequest(BaseModel):
+    """Request to update mood entry."""
+    mood_level: Optional[MoodLevel] = None
+    emotion_tags: Optional[List[EmotionTag]] = None
+    notes: Optional[str] = Field(None, max_length=500)
+    stress_level: Optional[int] = Field(None, ge=1, le=10)
+    sleep_hours: Optional[float] = Field(None, ge=0, le=24)
+    energy_level: Optional[int] = Field(None, ge=1, le=10)
+
+
+class MoodAnalysis(BaseModel):
+    """Analysis of mood patterns."""
+    average_mood: float
+    mood_trend: str  # "improving", "declining", "stable"
+    dominant_emotions: List[str]
+    insights: List[str]
+    recommendations: List[str]
+    period_days: int
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class CreateJournalEntryRequest(BaseModel):
     """Request to create journal entry."""
     title: Optional[str] = Field(None, max_length=100)
@@ -163,6 +184,16 @@ class CreateJournalEntryRequest(BaseModel):
     mood_before: Optional[MoodLevel] = None
     tags: List[str] = Field(default_factory=list)
     is_private: bool = True
+
+
+class UpdateJournalEntryRequest(BaseModel):
+    """Request to update journal entry."""
+    title: Optional[str] = Field(None, max_length=100)
+    content: Optional[str] = Field(None, min_length=1, max_length=5000)
+    mood_before: Optional[MoodLevel] = None
+    mood_after: Optional[MoodLevel] = None
+    tags: Optional[List[str]] = None
+    is_private: Optional[bool] = None
 
 
 class StartMeditationRequest(BaseModel):
@@ -176,6 +207,53 @@ class CompleteMeditationRequest(BaseModel):
     """Request to complete meditation session."""
     mood_after: Optional[MoodLevel] = None
     notes: Optional[str] = Field(None, max_length=500)
+
+
+class GenerateMeditationRequest(BaseModel):
+    """Request to generate custom meditation."""
+    type: MeditationType
+    duration_minutes: int = Field(..., ge=1, le=120)
+    focus_area: Optional[str] = Field(None, max_length=200)
+    difficulty_level: str = Field("beginner", pattern="^(beginner|intermediate|advanced)$")
+    voice_preference: Optional[str] = None
+
+
+class MeditationResponse(BaseModel):
+    """Response with generated meditation content."""
+    id: str
+    type: MeditationType
+    title: str
+    description: str
+    script: str
+    duration_minutes: int
+    audio_url: Optional[str] = None
+    instructions: List[str]
+    benefits: List[str]
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WellnessInsight(BaseModel):
+    """Individual wellness insight."""
+    id: str
+    title: str
+    insight: str
+    category: str  # "mood", "activity", "progress", "recommendation"
+    priority: str = Field("medium", pattern="^(low|medium|high)$")
+    actionable: bool = True
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WellnessDashboard(BaseModel):
+    """Complete wellness dashboard data."""
+    user_id: str
+    current_mood: Optional[MoodLevel] = None
+    mood_trend: Optional[str] = None
+    streak_days: int = 0
+    recent_activities: List[str] = Field(default_factory=list)
+    insights: List[WellnessInsight] = Field(default_factory=list)
+    recommendations: List[str] = Field(default_factory=list)
+    progress_metrics: Dict[str, Any] = Field(default_factory=dict)
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class WellnessInsightRequest(BaseModel):
@@ -202,133 +280,54 @@ class VoiceSessionState(str, Enum):
     """Voice session states."""
     CONNECTING = "connecting"
     CONNECTED = "connected"
-    TALKING = "talking"
     LISTENING = "listening"
     PROCESSING = "processing"
-    ENDED = "ended"
+    TALKING = "talking"
     ERROR = "error"
-
-
-class VoiceSession(BaseModel):
-    """Voice conversation session using Gemini Live API."""
-    session_id: str = Field(..., description="Unique voice session ID")
-    user_id: str = Field(..., description="User ID")
-    problem_category: Optional[ProblemCategory] = None
-    state: VoiceSessionState = VoiceSessionState.CONNECTING
-    voice_option: str = "Puck"  # Voice preference
-    language: str = "en"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    connected_at: Optional[datetime] = None
-    ended_at: Optional[datetime] = None
-    total_duration_seconds: Optional[int] = None
-    transcript: List[Dict[str, str]] = Field(default_factory=list)  # {"role": "user/assistant", "text": "...", "timestamp": "..."}
-    metadata: Optional[Dict[str, Any]] = None
+    ENDED = "ended"
 
 
 class VoiceSessionRequest(BaseModel):
     """Request to start a voice session."""
     problem_category: Optional[ProblemCategory] = None
-    voice_option: str = "Puck"
-    language: str = "en"
+    voice_option: str = Field(default="Puck")
+    language: str = Field(default="en")
 
 
 class VoiceSessionResponse(BaseModel):
-    """Response when starting a voice session."""
+    """Response for voice session creation."""
     session_id: str
     state: VoiceSessionState
     websocket_url: str
     created_at: datetime
 
 
-class VoiceInterruptionEvent(BaseModel):
-    """Event when voice is interrupted."""
+class VoiceSession(BaseModel):
+    """Voice session data model."""
     session_id: str
-    interrupted_at: datetime
-    reason: str = "user_speech_detected"
+    user_id: str
+    problem_category: Optional[ProblemCategory] = None
+    state: VoiceSessionState
+    voice_option: str
+    language: str
+    created_at: datetime
+    connected_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    total_duration_seconds: int = 0
+    transcript: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class VoiceTranscriptEvent(BaseModel):
-    """Real-time transcript event."""
+    """Voice transcript event."""
     session_id: str
     role: str  # "user" or "assistant"
     text: str
     timestamp: datetime
-    is_partial: bool = False  # For streaming transcription
+    is_partial: bool = False
 
 
-# Additional missing classes that are imported in __init__.py
-class UpdateMoodEntryRequest(BaseModel):
-    """Request to update mood entry."""
-    mood_level: Optional[MoodLevel] = None
-    emotion_tags: Optional[List[EmotionTag]] = None
-    notes: Optional[str] = Field(None, max_length=500)
-    stress_level: Optional[int] = Field(None, ge=1, le=10)
-    sleep_hours: Optional[float] = Field(None, ge=0, le=24)
-    energy_level: Optional[int] = Field(None, ge=1, le=10)
-
-
-class UpdateJournalEntryRequest(BaseModel):
-    """Request to update journal entry."""
-    title: Optional[str] = Field(None, max_length=100)
-    content: Optional[str] = Field(None, min_length=1, max_length=5000)
-    mood_before: Optional[MoodLevel] = None
-    mood_after: Optional[MoodLevel] = None
-    tags: Optional[List[str]] = None
-    is_private: Optional[bool] = None
-
-
-class MoodAnalysis(BaseModel):
-    """Analysis of mood patterns."""
-    user_id: str
-    period_start: date
-    period_end: date
-    average_mood: float
-    mood_trend: str  # "improving", "declining", "stable"
-    most_common_emotions: List[str]
-    insights: List[str]
-    recommendations: List[str]
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class GenerateMeditationRequest(BaseModel):
-    """Request to generate meditation content."""
-    type: MeditationType
-    duration_minutes: int = Field(..., ge=1, le=120)
-    problem_category: Optional[ProblemCategory] = None
-    user_preferences: Optional[Dict[str, Any]] = None
-
-
-class MeditationResponse(BaseModel):
-    """Response with meditation content."""
-    id: str
-    type: MeditationType
-    title: str
-    script: str
-    duration_minutes: int
-    instructions: List[str]
-    background_music_url: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class WellnessInsight(BaseModel):
-    """Individual wellness insight."""
-    insight_type: str
-    title: str
-    description: str
-    data_points: Dict[str, Any]
-    recommendations: List[str]
-    confidence_score: float = Field(..., ge=0.0, le=1.0)
-
-
-class WellnessDashboard(BaseModel):
-    """Complete wellness dashboard data."""
-    user_id: str
-    period_start: date
-    period_end: date
-    mood_summary: Optional[Dict[str, Any]] = None
-    journal_summary: Optional[Dict[str, Any]] = None
-    meditation_summary: Optional[Dict[str, Any]] = None
-    insights: List[WellnessInsight] = Field(default_factory=list)
-    goals_progress: List[Dict[str, Any]] = Field(default_factory=list)
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
-
+class VoiceInterruptionEvent(BaseModel):
+    """Voice interruption event."""
+    session_id: str
+    interrupted_at: datetime
+    reason: str
