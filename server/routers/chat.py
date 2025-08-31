@@ -15,12 +15,19 @@ from models.chat import (
     TextChatRequest, VoiceChatRequest, ChatResponse, 
     MultimodalChatRequest, SessionSummaryRequest, SessionSummaryResponse,
     ChatSession, ChatMessage, MessageRole, MessageType, MessageContent,
+<<<<<<< HEAD
     SafetyStatus, CrisisResponse, ChatMode, ProblemCategory,
     SessionEndRequest, SessionResourcesResponse, UpdateSessionCategoriesRequest
+=======
+    SafetyStatus, CrisisResponse, ChatMode, SessionResourcesRequest,
+    SessionResourcesResponse, ResourceType, GeneratedResource
+>>>>>>> feat/voice
 )
 from models.common import APIResponse, ErrorResponse, ErrorType
+from models.user import ProblemCategory, UserProfile
 from services.gemini_service import GeminiService
 from services.safety_service import SafetyService
+from services.wellness_service import WellnessService
 from repository.firestore_repository import FirestoreRepository
 
 logger = logging.getLogger(__name__)
@@ -34,18 +41,34 @@ def get_gemini_service() -> GeminiService:
 def get_safety_service() -> SafetyService:
     return SafetyService()
 
+def get_wellness_service() -> WellnessService:
+    return WellnessService()
+
 def get_repository() -> FirestoreRepository:
     return FirestoreRepository()
 
 async def get_current_user(authorization: str = Header(None)) -> str:
-    """Extract user ID from authorization header."""
+    """Extract user ID from Firebase ID token in authorization header."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
     
-    # Extract token and verify (mock implementation)
-    token = authorization.split(" ")[1]
-    # In production, verify Firebase ID token here
-    return f"user_{hash(token) % 10000}"  # Mock user ID
+    try:
+        # Extract token and verify with Firebase
+        token = authorization.split(" ")[1]
+
+        # Initialize Firebase service to verify token
+        from services.firebase_service import FirebaseService
+        firebase_service = FirebaseService()
+
+        # Verify ID token and extract claims
+        decoded_token = await firebase_service.verify_id_token(token)
+
+        # Return the user ID from the verified token
+        return decoded_token.get('uid')
+
+    except Exception as e:
+        logger.error(f"Token verification failed: {e}")
+        raise HTTPException(status_code=401, detail="Invalid or expired authorization token")
 
 
 @router.post("/text", response_model=ChatResponse)
@@ -54,10 +77,14 @@ async def send_text_message(
     current_user: str = Depends(get_current_user),
     gemini_service: GeminiService = Depends(get_gemini_service),
     safety_service: SafetyService = Depends(get_safety_service),
-    repository: FirestoreRepository = Depends(get_repository)
+    repository: FirestoreRepository = Depends(get_repository),
+    wellness_service: WellnessService = Depends(get_wellness_service)
 ):
-    """Send a text message to Mitra AI."""
+    """Send a text message to Mitra AI with personalized responses."""
     try:
+        # Get user profile for personalization
+        user_profile = await repository.get_user(current_user)
+        
         # Get or create chat session
         session_id = request.session_id or str(uuid.uuid4())
         session = await repository.get_chat_session(current_user, session_id)
@@ -72,8 +99,16 @@ async def send_text_message(
                 updated_at=datetime.utcnow(),
                 messages=[],
                 is_active=True,
-                total_messages=0
+                total_messages=0,
+                problem_category=request.problem_category,
+                generated_resources=[]
             )
+        elif request.problem_category and session.problem_category != request.problem_category:
+            # Update session problem category if changed
+            session.problem_category = request.problem_category
+        
+        # Create or update session
+        if not await repository.get_chat_session(current_user, session_id):
             await repository.create_chat_session(session)
         
         # Create user message
@@ -121,6 +156,7 @@ async def send_text_message(
                 timestamp=datetime.utcnow()
             )
         
+<<<<<<< HEAD
         # Get user context for personalization
         user_profile = await repository.get_user(current_user)
         user_context = None
@@ -151,7 +187,50 @@ async def send_text_message(
             include_grounding=request.include_grounding,
             user_context=user_context
         )
+=======
+        # Generate AI response with personalization and MCP resources
+        all_messages = session.messages + [user_message]
+>>>>>>> feat/voice
         
+        # Use personalized response generation
+        if user_profile:
+            response_text, grounding_sources, thinking_text = await gemini_service.generate_personalized_text_response(
+                all_messages,
+                user_profile=user_profile,
+                problem_category=session.problem_category,
+                include_grounding=request.include_grounding
+            )
+        else:
+            response_text, grounding_sources, thinking_text = await gemini_service.generate_text_response(
+                all_messages,
+                include_grounding=request.include_grounding
+            )
+        
+        # Generate contextual resources using MCP integration
+        generated_resources = []
+        try:
+            from services.mcp_integration_service import MCPIntegrationService
+            mcp_service = MCPIntegrationService()
+
+            # Extract recent user messages for context
+            recent_user_messages = [
+                msg for msg in all_messages[-5:]
+                if msg.role == MessageRole.USER and msg.content.text
+            ]
+
+            if recent_user_messages and session.problem_category:
+                session_context = " ".join([msg.content.text for msg in recent_user_messages])
+
+                # Generate tech-aware resources
+                generated_resources = await mcp_service.generate_tech_resources_for_chat(
+                    session_context=session_context,
+                    user_profile=user_profile,
+                    problem_category=session.problem_category
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to generate MCP resources: {e}")
+
         # Generate image if requested
         generated_image = None
         if request.generate_image and "image" in request.message.lower():
@@ -175,19 +254,27 @@ async def send_text_message(
             safety_status=SafetyStatus.SAFE,
             metadata={
                 "grounding_sources": [source.dict() for source in grounding_sources] if grounding_sources else [],
-                "thinking": thinking_text
+                "thinking": thinking_text,
+                "generated_resources": [resource.dict() for resource in generated_resources] if generated_resources else []
             }
         )
         
-        # Add assistant message to session
+        # Add messages to session
+        await repository.add_message_to_session(current_user, session_id, user_message)
         await repository.add_message_to_session(current_user, session_id, assistant_message)
         
+<<<<<<< HEAD
         # Analyze conversation for problem categories if not already set
         all_messages = session.messages + [user_message, assistant_message]
         suggested_categories = []
         if not session.problem_categories:
             suggested_categories = await gemini_service.analyze_conversation_for_problems(all_messages)
             suggested_categories = [ProblemCategory(cat) for cat in suggested_categories if cat in [pc.value for pc in ProblemCategory]]
+=======
+        # Update session message count
+        session.total_messages += 2
+        session.updated_at = datetime.utcnow()
+>>>>>>> feat/voice
         
         return ChatResponse(
             session_id=session_id,
@@ -641,3 +728,132 @@ async def delete_session(
     except Exception as e:
         logger.error(f"Error deleting session: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete session")
+
+
+@router.post("/session/{session_id}/resources", response_model=SessionResourcesResponse)
+async def generate_session_resources(
+    session_id: str,
+    request: SessionResourcesRequest,
+    current_user: str = Depends(get_current_user),
+    repository: FirestoreRepository = Depends(get_repository),
+    wellness_service: WellnessService = Depends(get_wellness_service)
+):
+    """Generate helpful resources based on chat session content."""
+    try:
+        # Get user profile for personalization
+        user_profile = await repository.get_user(current_user)
+        if not user_profile:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get chat session
+        session = await repository.get_chat_session(current_user, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        if not session.problem_category:
+            raise HTTPException(status_code=400, detail="No problem category set for session")
+        
+        # Generate session context from recent messages
+        recent_messages = session.messages[-10:] if session.messages else []
+        session_context = " ".join([
+            msg.content.text for msg in recent_messages 
+            if msg.content.text and msg.role == MessageRole.USER
+        ])
+        
+        # Generate resources
+        resources = await wellness_service.generate_session_resources(
+            problem_category=session.problem_category,
+            user_profile=user_profile,
+            session_context=session_context,
+            resource_types=request.resource_types or None
+        )
+        
+        # Update session with generated resources
+        session.generated_resources.extend([resource.model_dump() for resource in resources])
+        
+        return SessionResourcesResponse(
+            session_id=session_id,
+            resources=resources,
+            problem_category=session.problem_category,
+            generated_at=datetime.utcnow()
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating session resources: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate resources")
+
+
+@router.get("/categories")
+async def get_problem_categories():
+    """Get available problem categories for chat sessions."""
+    try:
+        categories = [
+            {
+                "value": category.value,
+                "label": category.value.replace("_", " ").title(),
+                "description": {
+                    "stress_anxiety": "Dealing with stress, worry, or anxious thoughts",
+                    "depression_sadness": "Feeling down, hopeless, or experiencing sadness",
+                    "relationship_issues": "Problems with friends, family, or romantic relationships",
+                    "academic_pressure": "School, college, or exam-related stress and pressure",
+                    "career_confusion": "Uncertainty about career choices or job-related stress",
+                    "family_problems": "Issues with family dynamics or expectations",
+                    "social_anxiety": "Difficulty in social situations or meeting new people",
+                    "self_esteem": "Low confidence or negative self-image",
+                    "sleep_issues": "Trouble sleeping or sleep-related problems",
+                    "anger_management": "Difficulty controlling anger or frustration",
+                    "addiction_habits": "Struggling with harmful habits or addictive behaviors",
+                    "grief_loss": "Coping with loss or grief",
+                    "identity_crisis": "Questions about identity, purpose, or life direction",
+                    "loneliness": "Feeling isolated or disconnected from others",
+                    "general_wellness": "Overall mental health and wellness support"
+                }.get(category.value, "General support and guidance")
+            }
+            for category in ProblemCategory
+        ]
+        
+        return {"categories": categories}
+        
+    except Exception as e:
+        logger.error(f"Error getting problem categories: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get problem categories")
+
+
+@router.post("/generate-image")
+async def generate_image(
+    request: dict,
+    current_user: str = Depends(get_current_user),
+    gemini_service: GeminiService = Depends(get_gemini_service)
+):
+    """Generate an image using AI based on the provided prompt."""
+    try:
+        prompt = request.get("prompt", "")
+        style = request.get("style", "realistic")
+        
+        if not prompt:
+            raise HTTPException(status_code=400, detail="Prompt is required")
+        
+        logger.info(f"Generating image for user {current_user} with prompt: {prompt}")
+        
+        # Generate image using Gemini service
+        image_data = await gemini_service.generate_image(prompt, style)
+        
+        if not image_data:
+            raise HTTPException(status_code=500, detail="Failed to generate image")
+        
+        # Return the image data directly as bytes
+        return Response(
+            content=image_data,
+            media_type="image/jpeg",
+            headers={
+                "Content-Disposition": "inline; filename=generated_image.jpg"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating image: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate image")

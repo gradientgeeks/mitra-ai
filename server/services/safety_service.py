@@ -206,7 +206,7 @@ class SafetyService:
         return """
         I'm very concerned about what you've shared. Your safety is the most important thing right now.
 
-        🚨 **Immediate Help Available:**
+        **Immediate Help Available:**
         
         Please reach out to a crisis helpline right now - they have trained counselors available 24/7:
         
@@ -219,7 +219,7 @@ class SafetyService:
         
         If you're in immediate danger, please contact emergency services or go to the nearest hospital.
         
-        💙 Remember: Crisis feelings are temporary, but ending your life is permanent. 
+        Remember: Crisis feelings are temporary, but ending your life is permanent. 
         Help is available, and things can get better.
         """
 
@@ -228,7 +228,7 @@ class SafetyService:
         return """
         I can see that you're going through something really difficult right now, and I'm concerned about you.
         
-        🆘 **You're Not Alone:**
+        **You're Not Alone:**
         
         It's important that you talk to someone who can provide professional support:
         
@@ -238,7 +238,7 @@ class SafetyService:
         
         These are confidential, non-judgmental spaces where you can share what you're feeling.
         
-        💚 Please remember: What you're feeling right now is real and valid, but it's not permanent. 
+         Please remember: What you're feeling right now is real and valid, but it's not permanent. 
         With the right support, things can improve.
         
         Is there a trusted friend, family member, or counselor you could reach out to today?
@@ -249,7 +249,7 @@ class SafetyService:
         return """
         I hear that you're struggling, and I want you to know that reaching out shows real strength.
         
-        🤗 **Support is Available:**
+        **Support is Available:**
         
         While I'm here to listen, talking to a trained counselor can provide additional support:
         
@@ -259,7 +259,7 @@ class SafetyService:
         
         These helplines are confidential and staffed by people who understand what you're going through.
         
-        💙 Remember: Difficult feelings are temporary. You've gotten through hard times before, 
+        Remember: Difficult feelings are temporary. You've gotten through hard times before, 
         and you can get through this too. You matter, and your life has value.
         
         What's one small thing that might help you feel a little better today?

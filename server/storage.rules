@@ -1,0 +1,33 @@
+rules_version = '2';
+
+// Firebase Storage Security Rules for Mitra AI
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Allow public read access to Mitra profile images
+    match /mitra_profiles/{imageId} {
+      allow read: if true; // Public read access for profile images
+      allow write: if request.auth != null; // Only authenticated users can write
+    }
+
+    // User-specific profile images (if users upload custom images)
+    match /user_profiles/{userId}/{imageId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Chat attachments (if implemented in the future)
+    match /chat_attachments/{userId}/{fileName} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Journal attachments (if implemented in the future)
+    match /journal_attachments/{userId}/{fileName} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

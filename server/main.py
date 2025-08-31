@@ -2,15 +2,17 @@
 Main FastAPI application for Mitra AI server.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 import uvicorn
 
 from core.config import settings
-from routers import chat, wellness, user
+from routers import chat, wellness, user, voice
 
 
 # Configure logging
@@ -48,12 +50,11 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI application
 app = FastAPI(
-    title="Mitra AI",
-    description="AI-powered mental wellness companion for Indian youth",
+    title="Mitra AI API",
+    description="AI-powered mental wellness companion API",
     version="1.0.0",
-    docs_url="/docs" if settings.debug else None,
-    redoc_url="/redoc" if settings.debug else None,
-    lifespan=lifespan
+    lifespan=lifespan,
+    debug=settings.debug
 )
 
 # Add CORS middleware
@@ -61,7 +62,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -69,50 +70,83 @@ app.add_middleware(
 if settings.environment == "production":
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["mitra-ai.web.app", "mitra-ai.firebaseapp.com"]
+        allowed_hosts=settings.allowed_hosts
     )
 
-# Include routers
-app.include_router(user.router, prefix="/api/v1/user", tags=["user"])
-app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
-app.include_router(wellness.router, prefix="/api/v1/wellness", tags=["wellness"])
+
+# Exception handlers
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle validation errors."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "Validation Error",
+            "detail": exc.errors(),
+            "body": exc.body
+        }
+    )
 
 
-@app.get("/")
-async def root():
-    """Root endpoint."""
-    return {
-        "message": "Mitra AI - Your Mental Wellness Companion",
-        "version": "1.0.0",
-        "status": "healthy"
-    }
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "status_code": exc.status_code
+        }
+    )
 
 
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Handle general exceptions."""
+    logger.error(f"Unhandled exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "detail": "An unexpected error occurred"
+        }
+    )
+
+
+# Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
         "environment": settings.environment,
-        "timestamp": "2025-08-28T00:00:00Z"
+        "version": "1.0.0"
     }
 
 
-@app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    """Global exception handler."""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return HTTPException(
-        status_code=500,
-        detail="Internal server error. Please try again later."
-    )
+# Include routers
+app.include_router(user.router, prefix="/api/v1/user", tags=["user"])
+app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
+app.include_router(wellness.router, prefix="/api/v1/wellness", tags=["wellness"])
+app.include_router(voice.router, prefix="/api/v1", tags=["voice"])  # Voice endpoints with WebSocket support
+
+
+# Root endpoint
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {
+        "message": "Welcome to Mitra AI API",
+        "version": "1.0.0",
+        "documentation": "/docs"
+    }
 
 
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",
-        host=settings.host,
-        port=settings.port,
+        host="0.0.0.0",
+        port=8000,
         reload=settings.debug,
-        log_level="debug" if settings.debug else "info"
+        log_level="info"
     )

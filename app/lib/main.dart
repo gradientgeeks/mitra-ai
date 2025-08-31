@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'screens/splash_screen.dart';
+import 'screens/app_router.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,7 +53,7 @@ class MitraApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const SplashScreen(),
+      home: const AppRouter(),
       debugShowCheckedModeBanner: false,
     );
   }

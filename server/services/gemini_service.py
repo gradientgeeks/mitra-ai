@@ -1,18 +1,13 @@
 """
 Gemini AI service for all AI interactions in Mitra AI.
-Handles text generation, voice conversations, image generation, and grounding.
+This is now a composite service that delegates to specialized services.
+Maintains backward compatibility with the original interface.
 """
 
-import asyncio
-import logging
-from typing import Optional, List, Dict, Any, AsyncGenerator, Tuple
-from datetime import datetime
-import base64
-import io
-from google import genai
-from google.genai import types
-from PIL import Image
+# Import the composite service implementation
+from .gemini_service_composite import GeminiService
 
+<<<<<<< HEAD
 from core.config import settings
 from models.chat import ChatMessage, MessageRole, MessageType, SafetyStatus
 from models.common import GroundingSource, GenerationConfig
@@ -781,3 +776,7 @@ class GeminiService:
         except Exception as e:
             logger.error(f"Error generating session resources: {e}")
             return []
+=======
+# Re-export the main service class
+__all__ = ['GeminiService']
+>>>>>>> feat/voice

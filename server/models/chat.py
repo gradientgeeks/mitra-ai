@@ -7,6 +7,11 @@ from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
 
+# Import problem categories from user models
+from models.user import ProblemCategory
+# Import resource types from wellness models
+from models.wellness import ResourceType, GeneratedResource
+
 
 class ProblemCategory(str, Enum):
     """Mental health problem categories for session context."""
@@ -92,30 +97,46 @@ class ChatSession(BaseModel):
     is_active: bool = True
     context_summary: Optional[str] = None
     total_messages: int = 0
+<<<<<<< HEAD
     problem_categories: List[ProblemCategory] = []
     generated_resources: List[Dict[str, Any]] = []
     session_mood_start: Optional[int] = None
     session_mood_end: Optional[int] = None
+=======
+    problem_category: Optional[ProblemCategory] = None
+    generated_resources: List[Dict[str, Any]] = []
+>>>>>>> feat/voice
 
 
 class TextChatRequest(BaseModel):
     """Request for text-based chat."""
     message: str = Field(..., min_length=1, max_length=4000)
     session_id: Optional[str] = None
+<<<<<<< HEAD
     include_grounding: bool = Field(default=False, description="Include web search grounding")
     generate_image: bool = Field(default=False, description="Generate image based on message content")
     problem_categories: List[ProblemCategory] = Field(default=[], description="Current conversation problem categories")
     user_context: Optional[Dict[str, Any]] = Field(default=None, description="User context including age_group, gender, mitra_name, etc.")
+=======
+    include_grounding: bool = False
+    generate_image: bool = False
+    problem_category: Optional[ProblemCategory] = None
+>>>>>>> feat/voice
 
 
 class VoiceChatRequest(BaseModel):
     """Request for voice-based chat."""
     audio_data: bytes = Field(..., description="Audio data")
     session_id: Optional[str] = None
+<<<<<<< HEAD
     voice_preference: Optional[str] = Field(default="Puck", description="Preferred voice for response")
     sample_rate: int = Field(default=16000, description="Audio sample rate")
     problem_categories: List[ProblemCategory] = Field(default=[], description="Current conversation problem categories")
     user_context: Optional[Dict[str, Any]] = Field(default=None, description="User context including age_group, gender, etc.")
+=======
+    response_format: str = Field(default="audio", pattern="^(audio|text)$")
+    problem_category: Optional[ProblemCategory] = None
+>>>>>>> feat/voice
 
 
 class ChatResponse(BaseModel):
@@ -130,8 +151,12 @@ class ChatResponse(BaseModel):
     grounding_sources: Optional[List[Dict[str, str]]] = None
     timestamp: datetime
     thinking_text: Optional[str] = None
+<<<<<<< HEAD
     suggested_problem_categories: List[ProblemCategory] = []
     generated_resources: List[Dict[str, Any]] = []
+=======
+    generated_resources: Optional[List[Dict[str, Any]]] = None
+>>>>>>> feat/voice
 
 
 class MultimodalChatRequest(BaseModel):
@@ -139,9 +164,14 @@ class MultimodalChatRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=4000)
     image_data: Optional[bytes] = None
     session_id: Optional[str] = None
+<<<<<<< HEAD
     operation: str = Field(default="describe", description="Operation: generate, edit, or describe")
     problem_categories: List[ProblemCategory] = Field(default=[], description="Current conversation problem categories")
     user_context: Optional[Dict[str, Any]] = Field(default=None, description="User context including age_group, gender, etc.")
+=======
+    operation: str = Field(default="describe", pattern="^(describe|edit|generate)$")
+    problem_category: Optional[ProblemCategory] = None
+>>>>>>> feat/voice
 
 
 class SessionSummaryRequest(BaseModel):
@@ -162,6 +192,7 @@ class SessionSummaryResponse(BaseModel):
     context_summary: Optional[str] = None
     recent_messages: Optional[List[ChatMessage]] = None
     is_active: bool
+<<<<<<< HEAD
     problem_categories: List[ProblemCategory] = []
     generated_resources: List[Dict[str, Any]] = []
     session_mood_start: Optional[int] = None
@@ -190,6 +221,10 @@ class UpdateSessionCategoriesRequest(BaseModel):
     session_id: str
     problem_categories: List[ProblemCategory]
     add_categories: bool = Field(default=True, description="Whether to add to existing or replace")
+=======
+    problem_category: Optional[ProblemCategory] = None
+    generated_resources: List[Dict[str, Any]] = []
+>>>>>>> feat/voice
 
 
 class CrisisResponse(BaseModel):
@@ -200,3 +235,19 @@ class CrisisResponse(BaseModel):
     helplines: Dict[str, Dict[str, str]]
     immediate_actions: List[str]
     timestamp: datetime
+
+
+
+class SessionResourcesRequest(BaseModel):
+    """Request to generate resources for a session."""
+    session_id: str
+    resource_types: List[ResourceType] = []
+    max_resources: int = Field(default=3, ge=1, le=10)
+
+
+class SessionResourcesResponse(BaseModel):
+    """Response with generated session resources."""
+    session_id: str
+    resources: List[GeneratedResource]
+    problem_category: ProblemCategory
+    generated_at: datetime

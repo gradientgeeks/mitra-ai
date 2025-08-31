@@ -53,6 +53,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     }
   }
 
+<<<<<<< HEAD
   void _checkAuthState() async {
     final authState = ref.read(authStateProvider);
     
@@ -91,17 +92,39 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               MaterialPageRoute(builder: (context) => const LoginScreen()),
             );
           }
+=======
+  void _checkAuthState() {
+    final authState = ref.read(authControllerProvider);
+    authState.when(
+      data: (state) {
+        if (state.isAuthenticated) {
+          if (state.needsOnboarding) {
+            // User is authenticated but needs onboarding
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+            );
+          } else {
+            // User is authenticated and onboarded
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+            );
+          }
+        } else {
+          // User is not authenticated
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
+          );
+>>>>>>> feat/voice
         }
       },
       loading: () {
         // Stay on splash screen while loading
         Future.delayed(const Duration(milliseconds: 1000), () {
-          if (mounted) {
-            _checkAuthState();
-          }
+          if (mounted) _checkAuthState();
         });
       },
       error: (error, stackTrace) {
+        // On error, go to login screen
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const LoginScreen()),
         );
