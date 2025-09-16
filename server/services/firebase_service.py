@@ -32,7 +32,7 @@ class FirebaseService:
             logger.info("Firebase already initialized")
         except ValueError:
             # Initialize Firebase Admin SDK
-            if settings.firebase_credentials_path and os.path.exists(settings.firebase_credentials_path):
+            if settings.firebase_credentials_path and os.path.exists(settings.firebase_credentials_path) and os.path.getsize(settings.firebase_credentials_path) > 0:
                 # Use service account credentials file
                 cred = credentials.Certificate(settings.firebase_credentials_path)
                 firebase_admin.initialize_app(cred, {
@@ -909,3 +909,28 @@ class FirebaseService:
             logger.error(f"Error listing files in {directory_path}: {e}")
             return []
 
+    async def save_flashcards(self, uid: str, journal_id: str, flashcards: List[Dict[str, Any]]) -> bool:
+        """
+        Save flashcards to a journal entry subcollection.
+
+        Args:
+            uid: User ID
+            journal_id: Journal entry ID
+            flashcards: List of flashcard data
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            operations = []
+            for card in flashcards:
+                operations.append({
+                    'type': 'set',
+                    'collection': f'users/{uid}/journal_entries/{journal_id}/flashcards',
+                    'document': card['id'],
+                    'data': card
+                })
+            return await self.batch_write(operations)
+        except Exception as e:
+            logger.error(f"Error saving flashcards to subcollection: {e}")
+            return False

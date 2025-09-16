@@ -54,6 +54,35 @@ class ChatResponse {
   }
 }
 
+class MeditationResponse {
+  final String sessionId;
+  final String title;
+  final String script;
+  final int durationMinutes;
+  final List<String> instructions;
+  final DateTime createdAt;
+
+  const MeditationResponse({
+    required this.sessionId,
+    required this.title,
+    required this.script,
+    required this.durationMinutes,
+    required this.instructions,
+    required this.createdAt,
+  });
+
+  factory MeditationResponse.fromJson(Map<String, dynamic> json) {
+    return MeditationResponse(
+      sessionId: json['session_id'] as String,
+      title: json['title'] as String,
+      script: json['script'] as String,
+      durationMinutes: json['duration_minutes'] as int,
+      instructions: List<String>.from(json['instructions']),
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+}
+
 class GroundingSource {
   final String title;
   final String url;
@@ -298,4 +327,49 @@ enum ResourceType {
   videos,
   worksheets,
   emergency_contacts,
+}
+
+class Flashcard {
+  final String id;
+  final String front;
+  final String back;
+  final DateTime createdAt;
+
+  const Flashcard({
+    required this.id,
+    required this.front,
+    required this.back,
+    required this.createdAt,
+  });
+
+  factory Flashcard.fromJson(Map<String, dynamic> json) {
+    return Flashcard(
+      id: json['id'] as String,
+      front: json['front'] as String,
+      back: json['back'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+}
+
+class FlashcardResponse {
+  final String journalEntryId;
+  final List<Flashcard> flashcards;
+  final DateTime generatedAt;
+
+  const FlashcardResponse({
+    required this.journalEntryId,
+    required this.flashcards,
+    required this.generatedAt,
+  });
+
+  factory FlashcardResponse.fromJson(Map<String, dynamic> json) {
+    return FlashcardResponse(
+      journalEntryId: json['journal_entry_id'] as String,
+      flashcards: (json['flashcards'] as List)
+          .map((item) => Flashcard.fromJson(item))
+          .toList(),
+      generatedAt: DateTime.parse(json['generated_at'] as String),
+    );
+  }
 }

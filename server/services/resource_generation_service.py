@@ -15,8 +15,14 @@ from services.base_gemini_service import BaseGeminiService
 logger = logging.getLogger(__name__)
 
 
+from repository.firestore_repository import FirestoreRepository
+
 class ResourceGenerationService(BaseGeminiService):
     """Service for generating contextual resources based on chat analysis."""
+
+    def __init__(self, repository: FirestoreRepository = FirestoreRepository()):
+        super().__init__()
+        self.repository = repository
 
     async def generate_session_resources(
         self,

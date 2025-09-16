@@ -216,6 +216,8 @@ class GenerateMeditationRequest(BaseModel):
     focus_area: Optional[str] = Field(None, max_length=200)
     difficulty_level: str = Field("beginner", pattern="^(beginner|intermediate|advanced)$")
     voice_preference: Optional[str] = None
+    current_mood: Optional[MoodLevel] = None
+    format: str = "text"
 
 
 class MeditationResponse(BaseModel):
@@ -331,3 +333,18 @@ class VoiceInterruptionEvent(BaseModel):
     session_id: str
     interrupted_at: datetime
     reason: str
+
+
+class Flashcard(BaseModel):
+    """A single flashcard generated from a journal entry."""
+    id: str
+    front: str
+    back: str
+    created_at: datetime
+
+
+class FlashcardResponse(BaseModel):
+    """Response containing a list of generated flashcards."""
+    journal_entry_id: str
+    flashcards: List[Flashcard]
+    generated_at: datetime
