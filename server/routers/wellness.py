@@ -14,11 +14,15 @@ from models.wellness import (
     MoodEntry, CreateMoodEntryRequest, UpdateMoodEntryRequest, MoodAnalysis,
     JournalEntry, CreateJournalEntryRequest, UpdateJournalEntryRequest,
     MeditationSession, GenerateMeditationRequest, MeditationResponse,
-    WellnessInsight, WellnessDashboard, MoodLevel, EmotionTag, MeditationType
+    WellnessInsight, WellnessDashboard, MoodLevel, EmotionTag, MeditationType,
+    FlashcardResponse
 )
 from models.common import APIResponse, ErrorResponse, ErrorType
 from services.gemini_service import GeminiService
 from repository.firestore_repository import FirestoreRepository
+from services.resource_generation_service import ResourceGenerationService
+from services.flashcard_service import FlashcardService
+from models.user import ProblemCategory, UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,14 @@ def get_gemini_service() -> GeminiService:
 
 def get_repository() -> FirestoreRepository:
     return FirestoreRepository()
+
+def get_resource_generation_service(
+    repository: FirestoreRepository = Depends(get_repository)
+) -> ResourceGenerationService:
+    return ResourceGenerationService(repository=repository)
+
+def get_flashcard_service() -> FlashcardService:
+    return FlashcardService()
 
 async def get_current_user(authorization: str = Header(None)) -> str:
     """Extract user ID from authorization header."""
@@ -309,6 +321,34 @@ async def update_journal_entry(
         raise HTTPException(status_code=500, detail="Failed to update journal entry")
 
 
+@router.post("/journal/{entry_id}/flashcards", response_model=FlashcardResponse)
+async def generate_flashcards_for_journal_entry(
+    entry_id: str,
+    current_user: str = Depends(get_current_user),
+    repository: FirestoreRepository = Depends(get_repository),
+    flashcard_service: FlashcardService = Depends(get_flashcard_service)
+):
+    """Generate flashcards for a specific journal entry."""
+    try:
+        # In a real app, you'd get the specific journal entry by ID
+        # For now, we'll get the latest one to demonstrate
+        journal_entries = await repository.get_journal_entries(current_user, limit=1)
+        if not journal_entries:
+            raise HTTPException(status_code=404, detail="Journal entry not found")
+        journal_entry = journal_entries[0]
+
+        flashcards = await flashcard_service.generate_flashcards_from_journal(journal_entry)
+
+        return FlashcardResponse(
+            journal_entry_id=journal_entry.id,
+            flashcards=flashcards,
+            generated_at=datetime.utcnow()
+        )
+    except Exception as e:
+        logger.error(f"Error generating flashcards: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate flashcards")
+
+
 @router.post("/journal/guided-prompt")
 async def get_guided_journal_prompt(
     current_user: str = Depends(get_current_user),
@@ -348,16 +388,33 @@ async def generate_custom_meditation(
     request: GenerateMeditationRequest,
     current_user: str = Depends(get_current_user),
     repository: FirestoreRepository = Depends(get_repository),
-    gemini_service: GeminiService = Depends(get_gemini_service)
+    resource_service: ResourceGenerationService = Depends(get_resource_generation_service)
 ):
     """Generate a custom meditation session."""
     try:
-        # Generate meditation script
-        meditation_script = await gemini_service.generate_meditation_script(
-            request.type.value,
-            request.duration_minutes,
-            request.focus_area
+from models.user import UserPreferences
+# Mock user profile and session context for now
+        user_profile = UserProfile(
+            uid=current_user,
+            age_group="adult",
+            created_at=datetime.utcnow(),
+            last_login=datetime.utcnow(),
+            preferences=UserPreferences(),
         )
+        session_context = f"The user wants a meditation for {request.focus_area}."
+
+        # Generate meditation resource
+        meditation_resource = await resource_service._generate_specific_resource(
+            resource_type="meditation",
+            problem_category=ProblemCategory.STRESS_ANXIETY,  # Mock category
+            user_profile=user_profile,
+            session_context=session_context
+        )
+
+        if not meditation_resource:
+            raise HTTPException(status_code=500, detail="Failed to generate meditation content")
+
+        meditation_script = meditation_resource.content
         
         # Create meditation session record
         meditation_session = MeditationSession(

@@ -81,4 +81,5 @@ app.*.map.json
 
 # Environment specific configs
 local.properties
+firebase-credentials.json
 

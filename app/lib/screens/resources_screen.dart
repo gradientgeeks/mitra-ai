@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'meditation_screen.dart';
+import 'journal_screen.dart';
 
 class ResourcesScreen extends ConsumerWidget {
   const ResourcesScreen({super.key});
@@ -151,6 +152,13 @@ class ResourcesScreen extends ConsumerWidget {
                   title: 'Personal Journal',
                   subtitle: 'Reflect & grow',
                   color: const Color(0xFF3498DB),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const JournalScreen(),
+                      ),
+                    );
+                  },
                 ),
                 _buildToolCard(
                   context,

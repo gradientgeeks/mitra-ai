@@ -80,6 +80,34 @@ class ApiService {
     }
   }
 
+  // Generate a custom meditation
+  Future<MeditationResponse> generateMeditation({
+    required String type,
+    required int duration,
+    String? focusArea,
+  }) async {
+    try {
+      final response = await post('/meditation/generate', data: {
+        'type': type,
+        'duration_minutes': duration,
+        'focus_area': focusArea,
+      });
+      return MeditationResponse.fromJson(response);
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  // Generate flashcards from journal entry
+  Future<FlashcardResponse> generateFlashcards(String journalEntryId) async {
+    try {
+      final response = await post('/journal/$journalEntryId/flashcards');
+      return FlashcardResponse.fromJson(response);
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   Future<Map<String, dynamic>> post(String endpoint, {Map<String, dynamic>? data}) async {
     try {
       final response = await _client.post(

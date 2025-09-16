@@ -251,3 +251,26 @@ class WellnessRepository(BaseRepository):
         except Exception as e:
             logger.error(f"Error getting meditation sessions for user: {e}")
             return []
+
+    # Flashcard operations
+    async def save_flashcards(self, uid: str, journal_entry_id: str, flashcards: List) -> bool:
+        """Save a list of flashcards to a journal entry."""
+        try:
+            operations = []
+            for flashcard in flashcards:
+                flashcard_data = flashcard.dict()
+                flashcard_data["created_at"] = flashcard.created_at
+                operations.append({
+                    'type': 'set',
+                    'collection': f'users/{uid}/journal_entries/{journal_entry_id}/flashcards',
+                    'document': flashcard.id,
+                    'data': flashcard_data
+                })
+
+            result = await self.batch_write(operations)
+            if result:
+                logger.info(f"Saved {len(flashcards)} flashcards for journal entry {journal_entry_id}")
+            return result
+        except Exception as e:
+            logger.error(f"Error saving flashcards: {e}")
+            return False

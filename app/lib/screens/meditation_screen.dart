@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:app/services/api_service.dart';
+import '../models/chat_models.dart' as chat_models;
+
 // Provider to manage meditation state
 final meditationStateProvider = StateProvider<MeditationState>((ref) => MeditationState.idle);
 final selectedMeditationProvider = StateProvider<MeditationTypeModel?>((ref) => null);
 final meditationTimerProvider = StateProvider<int>((ref) => 0);
+final generatedMeditationProvider = StateProvider<chat_models.MeditationResponse?>((ref) => null);
 
 enum MeditationState {
   idle,
@@ -480,6 +484,8 @@ class _MeditationScreenState extends ConsumerState<MeditationScreen>
   }
 
   Widget _buildMeditationPlayer(MeditationTypeModel meditation, MeditationState state) {
+    final generatedMeditation = ref.watch(generatedMeditationProvider);
+
     return Padding(
       padding: const EdgeInsets.all(24.0),
       child: Column(
@@ -571,35 +577,11 @@ class _MeditationScreenState extends ConsumerState<MeditationScreen>
           else
             Expanded(
               child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 150,
-                      height: 150,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: meditation.color.withOpacity(0.1),
+                child: generatedMeditation == null
+                    ? const CircularProgressIndicator()
+                    : SingleChildScrollView(
+                        child: Text(generatedMeditation.script),
                       ),
-                      child: Icon(
-                        meditation.icon,
-                        size: 80,
-                        color: meditation.color,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      state == MeditationState.playing
-                          ? 'Follow the guided meditation'
-                          : 'Ready to begin your meditation',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: const Color(0xFF2C3E50),
-                            fontWeight: FontWeight.w600,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
               ),
             ),
 
@@ -708,9 +690,25 @@ class _MeditationScreenState extends ConsumerState<MeditationScreen>
     );
   }
 
-  void _startMeditation(MeditationTypeModel meditation) {
+  void _startMeditation(MeditationTypeModel meditation) async {
     ref.read(selectedMeditationProvider.notifier).state = meditation;
     ref.read(meditationStateProvider.notifier).state = MeditationState.idle;
+
+    try {
+      final apiService = ApiService();
+      final generatedMeditation = await apiService.generateMeditation(
+        type: meditation.id,
+        duration: meditation.duration,
+        focusArea: meditation.title,
+      );
+      ref.read(generatedMeditationProvider.notifier).state = generatedMeditation;
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error generating meditation: $e'),
+        ),
+      );
+    }
   }
 
   void _playMeditation() {
