@@ -72,6 +72,14 @@ app.*.map.json
 **/*-keys.json
 **/api-keys.json
 
+# GitHub Actions service account keys
+github-actions-key.json
+**/github-actions-*.json
+
+# Google Cloud credentials
+**/credentials.json
+**/service-account-*.json
+
 # Certificates and keystores
 *.keystore
 *.jks
@@ -82,4 +90,12 @@ app.*.map.json
 # Environment specific configs
 local.properties
 firebase-credentials.json
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
 
