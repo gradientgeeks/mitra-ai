@@ -3,7 +3,6 @@ name: Build and Deploy Mitra AI to Cloud Run
 on:
   push:
     branches:
-      - main
       - master
       - feat/voice
     paths:
@@ -11,7 +10,6 @@ on:
       - '.github/workflows/**'
   pull_request:
     branches:
-      - main
       - master
     paths:
       - 'server/**'
@@ -51,7 +49,7 @@ jobs:
 
   build-and-deploy:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/voice'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/feat/voice'
     
     steps:
       - name: Checkout source
