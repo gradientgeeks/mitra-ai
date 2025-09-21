@@ -6,25 +6,25 @@ import '../models/user_model.dart';
 import '../models/chat_models.dart';
 
 class ApiService {
-  // Platform-aware base URL configuration
-  static String get baseUrl {
-    if (kIsWeb) {
-      // For Flutter Web, use localhost
-      return 'http://localhost:8000/api/v1';
-    } else if (Platform.isAndroid) {
-      // For Android, use the machine's local IP address
-      return 'http://192.168.94.12:8000/api/v1';
-    } else if (Platform.isIOS) {
-      // For iOS Simulator, use localhost; for device, use IP
-      return 'http://192.168.94.12:8000/api/v1';
-    } else {
-      // Default fallback
-      return 'http://localhost:8000/api/v1';
-    }
-  }
+  // Production Cloud Run URL (HTTPS)
+  static const String baseUrl = 'https://mitra-ai-server-188702930872.us-central1.run.app/api/v1';
   
-  // For production, override with:
-  // static const String baseUrl = 'https://your-backend-domain.com/api/v1';
+  // For local development, uncomment this and comment out the production URL above:
+  // static String get baseUrl {
+  //   if (kIsWeb) {
+  //     // For Flutter Web, use localhost
+  //     return 'http://localhost:8000/api/v1';
+  //   } else if (Platform.isAndroid) {
+  //     // For Android, use the machine's local IP address
+  //     return 'http://192.168.94.12:8000/api/v1';
+  //   } else if (Platform.isIOS) {
+  //     // For iOS Simulator, use localhost; for device, use IP
+  //     return 'http://192.168.94.12:8000/api/v1';
+  //   } else {
+  //     // Default fallback
+  //     return 'http://localhost:8000/api/v1';
+  //   }
+  // }
   
   final http.Client _client = http.Client();
   String? _authToken;
