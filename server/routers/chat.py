@@ -15,13 +15,9 @@ from models.chat import (
     TextChatRequest, VoiceChatRequest, ChatResponse, 
     MultimodalChatRequest, SessionSummaryRequest, SessionSummaryResponse,
     ChatSession, ChatMessage, MessageRole, MessageType, MessageContent,
-<<<<<<< HEAD
     SafetyStatus, CrisisResponse, ChatMode, ProblemCategory,
-    SessionEndRequest, SessionResourcesResponse, UpdateSessionCategoriesRequest
-=======
-    SafetyStatus, CrisisResponse, ChatMode, SessionResourcesRequest,
-    SessionResourcesResponse, ResourceType, GeneratedResource
->>>>>>> feat/voice
+    SessionEndRequest, SessionResourcesResponse, UpdateSessionCategoriesRequest,
+    SessionResourcesRequest, ResourceType, GeneratedResource
 )
 from models.common import APIResponse, ErrorResponse, ErrorType
 from models.user import ProblemCategory, UserProfile
@@ -156,7 +152,6 @@ async def send_text_message(
                 timestamp=datetime.utcnow()
             )
         
-<<<<<<< HEAD
         # Get user context for personalization
         user_profile = await repository.get_user(current_user)
         user_context = None
@@ -180,17 +175,8 @@ async def send_text_message(
             else:
                 user_context = request.user_context
         
-        # Generate AI response
-        all_messages = session.messages + [user_message]
-        response_text, grounding_sources, thinking_text = await gemini_service.generate_text_response(
-            all_messages,
-            include_grounding=request.include_grounding,
-            user_context=user_context
-        )
-=======
         # Generate AI response with personalization and MCP resources
         all_messages = session.messages + [user_message]
->>>>>>> feat/voice
         
         # Use personalized response generation
         if user_profile:
@@ -263,18 +249,16 @@ async def send_text_message(
         await repository.add_message_to_session(current_user, session_id, user_message)
         await repository.add_message_to_session(current_user, session_id, assistant_message)
         
-<<<<<<< HEAD
         # Analyze conversation for problem categories if not already set
         all_messages = session.messages + [user_message, assistant_message]
         suggested_categories = []
         if not session.problem_categories:
             suggested_categories = await gemini_service.analyze_conversation_for_problems(all_messages)
             suggested_categories = [ProblemCategory(cat) for cat in suggested_categories if cat in [pc.value for pc in ProblemCategory]]
-=======
+        
         # Update session message count
         session.total_messages += 2
         session.updated_at = datetime.utcnow()
->>>>>>> feat/voice
         
         return ChatResponse(
             session_id=session_id,
