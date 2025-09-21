@@ -5,14 +5,17 @@ on:
     branches:
       - main
       - master
+      - feat/voice
     paths:
       - 'server/**'
+      - '.github/workflows/**'
   pull_request:
     branches:
       - main
       - master
     paths:
       - 'server/**'
+  workflow_dispatch: # Allow manual triggering
 
 env:
   PROJECT_ID: mitra-348d9
@@ -53,6 +56,19 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+
+      - name: Check if GCP Service Account Key exists
+        run: |
+          if [ -z "${{ secrets.GCP_SA_KEY }}" ]; then
+            echo "❌ Error: GCP_SA_KEY secret is not set in repository settings"
+            echo "Please add the service account key to GitHub Secrets:"
+            echo "1. Go to Repository Settings → Secrets and variables → Actions"
+            echo "2. Create new secret: GCP_SA_KEY"
+            echo "3. Paste the contents of github-actions-key.json"
+            exit 1
+          else
+            echo "✅ GCP_SA_KEY secret is configured"
+          fi
 
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
