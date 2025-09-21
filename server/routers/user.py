@@ -11,11 +11,7 @@ from fastapi import APIRouter, HTTPException, Depends, Header
 from models.user import (
     UserProfile, UserResponse, CreateUserRequest, UpdateUserRequest,
     LinkAccountRequest, UserProvider, UserStatus, UserPreferences,
-<<<<<<< HEAD
-    OnboardingRequest
-=======
     OnboardingRequest, AgeGroup, Gender, VoiceOption
->>>>>>> feat/voice
 )
 from models.common import APIResponse, ErrorResponse, ErrorType
 from services.firebase_service import FirebaseService
@@ -188,11 +184,8 @@ async def create_anonymous_user(
             preferences=user_profile.preferences,
             total_sessions=user_profile.total_sessions,
             last_mood_entry=user_profile.last_mood_entry,
-<<<<<<< HEAD
-=======
             age_group=user_profile.age_group,
             birth_year=user_profile.birth_year,
->>>>>>> feat/voice
             onboarding_completed=user_profile.onboarding_completed
         )
         
@@ -367,11 +360,8 @@ async def get_user_profile(
             preferences=user_profile.preferences,
             total_sessions=user_profile.total_sessions,
             last_mood_entry=user_profile.last_mood_entry,
-<<<<<<< HEAD
-=======
             age_group=user_profile.age_group,
             birth_year=user_profile.birth_year,
->>>>>>> feat/voice
             onboarding_completed=user_profile.onboarding_completed
         )
         

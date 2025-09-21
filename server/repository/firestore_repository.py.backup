@@ -77,7 +77,28 @@ class FirestoreRepository:
         """Update session context summary."""
         return await self.chat_repo.update_session_summary(uid, session_id, summary)
 
+<<<<<<< HEAD
+    async def update_chat_session(self, session: ChatSession) -> bool:
+        """Update an entire chat session."""
+        try:
+            session_data = session.dict()
+            session_data["created_at"] = session.created_at
+            session_data["updated_at"] = session.updated_at
+            
+            # Ensure message timestamps are preserved
+            for msg in session_data.get("messages", []):
+                if "timestamp" in msg and isinstance(msg["timestamp"], datetime):
+                    msg["timestamp"] = msg["timestamp"]
+            
+            return await self.firebase_service.save_chat_session(session.user_id, session_data)
+        except Exception as e:
+            logger.error(f"Error updating chat session: {e}")
+            return False
+
+    # Mood tracking operations
+=======
     # Mood tracking operations - delegate to WellnessRepository
+>>>>>>> feat/voice
     async def create_mood_entry(self, mood_entry: MoodEntry) -> bool:
         """Create a new mood entry."""
         return await self.wellness_repo.create_mood_entry(mood_entry)
@@ -99,7 +120,23 @@ class FirestoreRepository:
     # Journal operations - delegate to WellnessRepository
     async def create_journal_entry(self, journal_entry: JournalEntry) -> bool:
         """Create a new journal entry."""
+<<<<<<< HEAD
+        try:
+            journal_data = journal_entry.model_dump()
+            # Store datetime objects directly for Firestore
+            journal_data["created_at"] = journal_entry.created_at
+            journal_data["updated_at"] = journal_entry.updated_at
+            
+            return await self.firebase_service.save_journal_entry(
+                journal_entry.user_id,
+                journal_data
+            )
+        except Exception as e:
+            logger.error(f"Error creating journal entry: {e}")
+            return False
+=======
         return await self.wellness_repo.create_journal_entry(journal_entry)
+>>>>>>> feat/voice
 
     async def get_journal_entries(self, uid: str, limit: int = 20) -> List[JournalEntry]:
         """Get journal entries for a user."""
