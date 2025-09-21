@@ -22,7 +22,6 @@ google-resumable-media
 googleapis-common-protos
 grpcio
 grpcio-status
-gunicorn
 h11
 h2
 hpack

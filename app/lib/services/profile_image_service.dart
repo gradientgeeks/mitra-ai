@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
 
 class ProfileImageService {
-  static const String baseUrl = 'http://localhost:8000/api/v1'; // Update with your backend URL
+  static const String baseUrl = 'https://mitra-ai-server-188702930872.us-central1.run.app/api/v1';
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
   /// Generate Mitra profile image using backend AI service

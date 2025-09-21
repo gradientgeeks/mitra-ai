@@ -32,28 +32,40 @@ class FirebaseService:
             logger.info("Firebase already initialized")
         except ValueError:
             # Initialize Firebase Admin SDK
-            if settings.firebase_credentials_path and os.path.exists(settings.firebase_credentials_path) and os.path.getsize(settings.firebase_credentials_path) > 0:
-                # Use service account credentials file
+            cred = None
+            
+            # Method 1: Try to use service account key from environment variable (for Cloud Run)
+            if os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY'):
+                try:
+                    service_account_info = json.loads(os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY'))
+                    cred = credentials.Certificate(service_account_info)
+                    logger.info("Firebase initialized with service account from environment variable")
+                except Exception as e:
+                    logger.error(f"Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY: {e}")
+            
+            # Method 2: Try to use service account credentials file
+            elif settings.firebase_credentials_path and os.path.exists(settings.firebase_credentials_path):
                 cred = credentials.Certificate(settings.firebase_credentials_path)
+                logger.info(f"Firebase initialized with service account from {settings.firebase_credentials_path}")
+            
+            # Method 3: Use default credentials (for Cloud Run, GCE, etc.)
+            elif settings.firebase_project_id:
+                try:
+                    cred = credentials.ApplicationDefault()
+                    logger.info("Firebase initialized with application default credentials")
+                except Exception as e:
+                    logger.error(f"Failed to initialize Firebase with default credentials: {e}")
+                    # Fall back to empty credentials for Cloud Run
+                    cred = credentials.ApplicationDefault()
+            
+            if cred:
                 firebase_admin.initialize_app(cred, {
                     'projectId': settings.firebase_project_id,
                     'storageBucket': settings.firebase_storage_bucket or f"{settings.firebase_project_id}.firebasestorage.app"
                 })
-                logger.info(f"Firebase initialized with service account from {settings.firebase_credentials_path}")
-            elif settings.firebase_project_id:
-                # Use default credentials (for Cloud Run, GCE, etc.)
-                try:
-                    cred = credentials.ApplicationDefault()
-                    firebase_admin.initialize_app(cred, {
-                        'projectId': settings.firebase_project_id,
-                        'storageBucket': settings.firebase_storage_bucket or f"{settings.firebase_project_id}.firebasestorage.app"
-                    })
-                    logger.info("Firebase initialized with application default credentials")
-                except Exception as e:
-                    logger.error(f"Failed to initialize Firebase with default credentials: {e}")
-                    raise
+                logger.info("Firebase app initialized successfully")
             else:
-                logger.error("Firebase configuration missing. Set FIREBASE_CREDENTIALS_PATH or FIREBASE_PROJECT_ID")
+                logger.error("No valid Firebase credentials found")
                 raise ValueError("Firebase configuration missing")
         
         # Initialize Firebase services

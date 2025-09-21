@@ -31,11 +31,18 @@ class Settings(BaseModel):
     
     # Security
     allowed_origins: list[str] = [
-        "*",
+        "*",  # Allow all origins for development - be more restrictive in production
         "http://localhost:3000",
-        "http://localhost:8080",
+        "http://localhost:8080", 
+        "http://localhost:46443",  # Flutter web development port
+        "http://localhost:5000",
+        "http://localhost:8000",
         "https://mitra-ai.web.app",
-        "https://mitra-ai.firebaseapp.com"
+        "https://mitra-ai.firebaseapp.com",
+        # Add more localhost ports that Flutter web might use
+        "http://localhost:39357",
+        "http://localhost:37249",
+        "http://localhost:33965"
     ]
     
     # Gemini Models
